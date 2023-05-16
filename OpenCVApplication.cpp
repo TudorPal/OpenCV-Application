@@ -507,19 +507,19 @@ void creareImagine4col() {
 				img.at<Vec3b>(i, j)[1] = 255;
 				img.at<Vec3b>(i, j)[2] = 255;
 			}
-			if (i < 128 & j >= 128)
+			if (i < 128 && j >= 128)
 			{
 				img.at<Vec3b>(i, j)[0] = 0;
 				img.at<Vec3b>(i, j)[1] = 0;
 				img.at<Vec3b>(i, j)[2] = 255;
 			}
-			if (i >= 128 & j < 128)
+			if (i >= 128 && j < 128)
 			{
 				img.at<Vec3b>(i, j)[0] = 0;
 				img.at<Vec3b>(i, j)[1] = 255;
 				img.at<Vec3b>(i, j)[2] = 0;
 			}
-			if (i >= 128 & j >= 128)
+			if (i >= 128 && j >= 128)
 			{
 				img.at<Vec3b>(i, j)[0] = 0;
 				img.at<Vec3b>(i, j)[1] = 255;
@@ -2324,7 +2324,7 @@ void highPassFilters(int n) {
 			}
 			if(sum > 255) dst.at<uchar>(i, j) = 255;
 			else if (sum < 0) dst.at<uchar>(i, j) = 0;
-				else dst.at<uchar>(i, j) = sum;
+				else dst.at<uchar>(i, j) = ceil(sum);
 		}
 	}
 
@@ -2645,6 +2645,223 @@ void gaussianNoiseFilter(){
 	waitKey();
 }
 
+void canny(){
+	char fname[MAX_PATH];
+	openFileDlg(fname);
+	Mat src = imread(fname, IMREAD_GRAYSCALE);
+	imshow("Original", src);
+	int height = src.rows;
+	int width = src.cols;
+
+	// step 1: Filtrarea imaginii cu filtru Gaussian
+	float sigma = 0.8;
+	// dimensiunea filtrului e 6*sigma
+	int w = ceil(6 * sigma);
+	//x0, y0 sunt mijlocul filtrului
+	int x0 = w / 2;
+	int y0 = w / 2;
+
+	Mat gaussianMat = src.clone();
+
+	// filtru: exp(-(x-x0)^2 + (y-y0)^2 / 2*sigma^2) / 2*pi*sigma^2
+	Mat filtru = Mat(w, w, CV_32FC1);
+	float sum = 0;
+	
+	for (int i = 0; i < w; i++) {
+		for (int j = 0; j < w; j++) {
+			filtru.at<float>(i, j) = exp(-((i - x0) * (i - x0) + (j - y0) * (j - y0)) / (2 * sigma * sigma)) / (2 * 3.1415 * sigma * sigma);
+			sum += filtru.at<float>(i, j);
+		}
+	}
+
+	for (int i = x0; i < height - x0; i++) {
+		for (int j = y0; j < width - y0; j++) {
+			float rez = 0;
+			for (int k = 0; k < w; k++) {
+				for (int l = 0; l < w; l++) {
+					rez += filtru.at<float>(k, l) * src.at<uchar>(i + k - x0, j + l - y0);
+				}
+			}
+			gaussianMat.at<uchar>(i, j) = rez/sum;
+		}
+	}
+	imshow("Gaussian Mat", gaussianMat);
+
+	// step 2: Filtram imaginea cu filtru Sobel
+	Mat sobel(3, 3, CV_32FC1);
+	sobel.at<float>(0, 0) = 1;
+	sobel.at<float>(0, 1) = 2;
+	sobel.at<float>(0, 2) = 1;
+	sobel.at<float>(1, 0) = 0;
+	sobel.at<float>(1, 1) = 0;
+	sobel.at<float>(1, 2) = 0;
+	sobel.at<float>(2, 0) = -1;
+	sobel.at<float>(2, 1) = -2;
+	sobel.at<float>(2, 2) = -1;
+	
+	Mat gx = Mat(height, width, CV_32FC1, Scalar(0));
+	Mat gy = Mat(height, width, CV_32FC1, Scalar(0));
+
+	for (int i = 1; i < height-1; i++) {
+		for (int j = 1; j < width-1; j++) {
+			float rezx = 0;
+			float rezy = 0;
+			for (int k = 0; k < 3; k++) {
+				for (int l = 0; l < 3; l++){
+					rezx += sobel.at<float>(2-l, 2-k) * gaussianMat.at<uchar>(i + k - 1, j + l - 1);
+					rezy += sobel.at<float>(k,l) * gaussianMat.at<uchar>(i + k - 1, j + l - 1);
+				}
+			}
+			gx.at<float>(i, j) = rezx;
+			gy.at<float>(i, j) = rezy;
+		}
+	}
+
+	imshow("Gx", gx);
+	imshow("Gy", gy);
+
+	Mat modul = Mat(height, width, CV_8UC1, Scalar(0));
+	normalize(gaussianMat, modul, 0, 255, NORM_MINMAX, CV_8UC1);
+	// direction - mat de float
+	Mat directie = Mat(height, width, CV_32FC1, Scalar(0));
+
+	for (int i = 0; i < height; i++) {
+		for (int j = 0; j < width; j++) {
+			int rez = ceil(sqrt(gx.at<float>(i, j) * gx.at<float>(i, j) + gy.at<float>(i, j) * gy.at<float>(i, j)) / 4*sqrt(2));
+			if (rez > 255) {
+				rez = 255;
+			}
+			modul.at<uchar>(i, j) = rez;
+			directie.at<float>(i, j) = atan2(gy.at<float>(i, j), gx.at<float>(i, j));
+		}
+	}
+
+	imshow("Modul", modul);
+
+	// step 3: Non-maximum suppression
+	Mat nonMax = Mat(height, width, CV_8UC1, Scalar(0));
+	normalize(modul, nonMax, 0, 255, NORM_MINMAX, CV_8UC1); 
+	
+	// zona 0 : modul(i,j) apartine (3*PI/8, 5*PI/8) sau (-5*PI/8, -3*PI/8)
+	// zona 1 : modul(i,j) apartine (PI/8, 3*PI/8] sau (-7*PI/8, -5*PI/8]
+	// zona 2 : modul(i,j) apartine (-PI/8, PI/8] sau [-7*PI/8, 7*PI/8]
+	// zona 3 : modul(i,j) apartine [5*PI/8, 7*PI/8) sau [-3*PI/8, -PI/8]
+
+	for (int i = 1; i < height-1; i++) {
+		for (int j = 1; j < width-1; j++) {
+			// zona 0
+			if (directie.at<float>(i, j) > 3*PI/8 && directie.at<float>(i, j) < 5*PI/8 || directie.at<float>(i, j) > -5*PI/8 && directie.at<float>(i, j) < -3*PI/8) {
+				if (modul.at<uchar>(i, j) < modul.at<uchar>(i+1, j) || modul.at<uchar>(i, j) < modul.at<uchar>(i-1, j)) {
+					nonMax.at<uchar>(i, j) = 0;
+				}
+			}
+			// zona 1
+			if (directie.at<float>(i, j) <= -5*PI/8 && directie.at<float>(i, j) > -7*PI/8 || directie.at<float>(i, j) <= 3*PI/8 && directie.at<float>(i, j) > PI/8) {
+				if (modul.at<uchar>(i, j) < modul.at<uchar>(i-1, j+1) || modul.at<uchar>(i, j) < modul.at<uchar>(i+1, j-1)) {
+					nonMax.at<uchar>(i, j) = 0;
+				}
+			}
+			// zona 2
+			if (directie.at<float>(i, j) >= -7*PI/8 && directie.at<float>(i, j) <= 7*PI/8 || directie.at<float>(i, j) <= PI/8 && directie.at<float>(i, j) > -PI/8) {
+				if (modul.at<uchar>(i, j) < modul.at<uchar>(i, j+1) || modul.at<uchar>(i, j) < modul.at<uchar>(i, j-1)) {
+					nonMax.at<uchar>(i, j) = 0;
+				}
+			}
+			// zona 3
+			if (directie.at<float>(i, j) < 7*PI/8 && directie.at<float>(i, j) >= 5*PI/8 || directie.at<float>(i, j) >= -3*PI/8 && directie.at<float>(i, j) <= -PI/8) {
+				if (modul.at<uchar>(i, j) < modul.at<uchar>(i-1, j-1) || modul.at<uchar>(i, j) < modul.at<uchar>(i+1, j+1)) {
+					nonMax.at<uchar>(i, j) = 0;
+				}
+			}
+		}
+	}
+	imshow("Non-max", nonMax);
+	// Step 4: adaptive binarization
+	Mat binarizare = nonMax.clone();
+	
+	int hist[256] = { 0 };
+	for (int i = 0; i < height; i++)
+	{
+		for (int j = 0; j < width; j++)
+		{
+			hist[binarizare.at<uchar>(i, j)]++;
+		}
+	}
+	showHistogram("modified histogram", hist, width, height);
+
+	int nrPuncteZero = hist[0];
+	int nrTotalPuncte = (width-2) * (height-2);
+	float p = 0.1;
+	int nrPuncteMuchie = (int)ceil(p * (nrTotalPuncte - nrPuncteZero));
+	int nrNonMuchie = (int)ceil((1-p) * (nrTotalPuncte - nrPuncteZero));
+
+	int treshold = 255;
+	sum = 0;
+
+	for (int i = 1; i < 256; i++) {
+		sum += hist[i];
+		if (sum > nrNonMuchie) {
+			treshold = i;
+			break;
+		}
+	}
+
+	int pragAdaptiv = treshold;
+	std::cout << pragAdaptiv << std::endl;
+	std::cout << nrTotalPuncte << std::endl;
+	std::cout << nrPuncteZero << std::endl;
+	std::cout << nrNonMuchie << std::endl;
+	std::cout << sum << std::endl;
+
+	// Step 5: Extinderea muchiilor prin histereza
+	for (int i = 1; i < height-1; i++) {
+		for (int j = 1; j < width-1; j++) {
+			if (binarizare.at<uchar>(i, j) > pragAdaptiv) {
+				binarizare.at<uchar>(i, j) = 255;
+			}
+			else {
+				if (binarizare.at<uchar>(i, j) > 0.4*pragAdaptiv) {
+					binarizare.at<uchar>(i, j) = 128;
+				}
+				else {
+					binarizare.at<uchar>(i, j) = 0;
+				}
+			}
+		}
+	}
+	imshow("Binarizare", binarizare);
+	//In continuare, vrem sa evidențiem muchiile tari. Daca într-o muchie exista si puncte tari si puncte slabe, le vom face pe cele slabe puncte tari, pentru a nu avea intermediari. Daca o muchie are doar puncte slabe si nu are nici un punct tare, va fi ștearsăcomplet.Putem sa folosim o coada in care sa stocam punctele tari pe care le găsim. Pentru fiecare punct tare căutăm daca exista puncte slabe printre vecinii lui, iar daca exista, le facem tari si le adăugăm in coada.Dupăce ne asiguram ca toate punctele tari au fost extinse in muchiile din care fac parte, parcurgem încăo data imaginea si suprimam (înlocuim cu 0) toate punctele slabe (de intensitate 128), pentru ca ele fac parte din muchii complet slabe si nu mai avem nevoie de ele.
+	std::queue<Point> coada;
+	for (int i = 1; i < height-1; i++) {
+		for (int j = 1; j < width-1; j++) {
+			if (binarizare.at<uchar>(i, j) == 255) {
+				coada.push(Point(i, j));
+				while (!coada.empty()) {
+					Point punct = coada.front();
+					coada.pop();
+					for (int k = -1; k <= 1; k++) {
+						for (int l = -1; l <= 1; l++) {
+							if (binarizare.at<uchar>(punct.x + k, punct.y + l) == 128) {
+								binarizare.at<uchar>(punct.x + k, punct.y + l) = 255;
+								coada.push(Point(punct.x + k, punct.y + l));
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	for (int i = 1; i < height-1; i++) {
+		for (int j = 1; j < width-1; j++) {
+			if (binarizare.at<uchar>(i, j) == 128) {
+				binarizare.at<uchar>(i, j) = 0;
+			}
+		}
+	}
+	imshow("Canny", binarizare);
+	waitKey();
+}
+
 int main()
 {
 	int op;
@@ -2696,6 +2913,7 @@ int main()
 		printf(" 41 - High-Pass Frequential Domain Filters\n");
 		printf(" 42 - Salt and Pepper noise Filter (Median, Minimal, Maximal)\n");
 		printf(" 43 - Gaussian noise Filter\n");
+		printf(" 44 - Canny edge detection\n");
 
 		printf(" 0 - Exit\n\n");
 		printf("Option: ");
@@ -2885,6 +3103,9 @@ int main()
 			break;
 		case 43:
 			gaussianNoiseFilter();
+			break;
+		case 44:
+			canny();
 			break;
 		}
 	} while (op != 0);
