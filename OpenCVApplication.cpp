@@ -1,11 +1,12 @@
 ﻿// OpenCVApplication.cpp : Defines the entry point for the console application.
 //
-
+#define NOMINMAX
 #include "stdafx.h"
 #include "common.h"
 #include <opencv2/core/utils/logger.hpp>
 #include <queue>
 #include <random>
+#include <cmath>
 
 wchar_t* projectPath;
 
@@ -2699,40 +2700,33 @@ void canny(){
 	sobel.at<float>(2, 1) = -2;
 	sobel.at<float>(2, 2) = -1;
 	
-	Mat gx = Mat(height, width, CV_32FC1, Scalar(0));
-	Mat gy = Mat(height, width, CV_32FC1, Scalar(0));
+	Mat gx = Mat(height, width, CV_32SC1, Scalar(0));
+	Mat gy = Mat(height, width, CV_32SC1, Scalar(0));
 
 	for (int i = 1; i < height-1; i++) {
 		for (int j = 1; j < width-1; j++) {
-			float rezx = 0;
-			float rezy = 0;
+			int rezx = 0;
+			int rezy = 0;
 			for (int k = 0; k < 3; k++) {
 				for (int l = 0; l < 3; l++){
 					rezx += sobel.at<float>(2-l, 2-k) * gaussianMat.at<uchar>(i + k - 1, j + l - 1);
 					rezy += sobel.at<float>(k,l) * gaussianMat.at<uchar>(i + k - 1, j + l - 1);
 				}
 			}
-			gx.at<float>(i, j) = rezx;
-			gy.at<float>(i, j) = rezy;
+			gx.at<int>(i, j) = rezx;
+			gy.at<int>(i, j) = rezy;
 		}
 	}
-
-	imshow("Gx", gx);
-	imshow("Gy", gy);
 
 	Mat modul = Mat(height, width, CV_8UC1, Scalar(0));
 	normalize(gaussianMat, modul, 0, 255, NORM_MINMAX, CV_8UC1);
 	// direction - mat de float
-	Mat directie = Mat(height, width, CV_32FC1, Scalar(0));
+	Mat directie = Mat(height, width, CV_32F, Scalar(0.0));
 
 	for (int i = 0; i < height; i++) {
 		for (int j = 0; j < width; j++) {
-			int rez = ceil(sqrt(gx.at<float>(i, j) * gx.at<float>(i, j) + gy.at<float>(i, j) * gy.at<float>(i, j)) / 4*sqrt(2));
-			if (rez > 255) {
-				rez = 255;
-			}
-			modul.at<uchar>(i, j) = rez;
-			directie.at<float>(i, j) = atan2(gy.at<float>(i, j), gx.at<float>(i, j));
+			modul.at<uchar>(i, j) = sqrt(pow(gx.at<int>(i, j), 2) + pow(gy.at<int>(i, j), 2)) / (4.0 * sqrt(2));
+			directie.at<float>(i, j) = (atan2(gy.at<int>(i, j), gx.at<int>(i, j)) + CV_PI);
 		}
 	}
 
@@ -2742,39 +2736,73 @@ void canny(){
 	Mat nonMax = Mat(height, width, CV_8UC1, Scalar(0));
 	normalize(modul, nonMax, 0, 255, NORM_MINMAX, CV_8UC1); 
 	
-	// zona 0 : modul(i,j) apartine (3*PI/8, 5*PI/8) sau (-5*PI/8, -3*PI/8)
-	// zona 1 : modul(i,j) apartine (PI/8, 3*PI/8] sau (-7*PI/8, -5*PI/8]
-	// zona 2 : modul(i,j) apartine (-PI/8, PI/8] sau [-7*PI/8, 7*PI/8]
-	// zona 3 : modul(i,j) apartine [5*PI/8, 7*PI/8) sau [-3*PI/8, -PI/8]
+	float ls11 = CV_PI / 8;
+	float ld11 = 3 * CV_PI / 8;
 
-	for (int i = 1; i < height-1; i++) {
-		for (int j = 1; j < width-1; j++) {
-			// zona 0
-			if (directie.at<float>(i, j) > 3*PI/8 && directie.at<float>(i, j) < 5*PI/8 || directie.at<float>(i, j) > -5*PI/8 && directie.at<float>(i, j) < -3*PI/8) {
-				if (modul.at<uchar>(i, j) < modul.at<uchar>(i+1, j) || modul.at<uchar>(i, j) < modul.at<uchar>(i-1, j)) {
+	float ls12 = 9 * CV_PI / 8;
+	float ld12 = 11 * CV_PI / 8;
+
+
+	float ls01 = 3 * CV_PI / 8;
+	float ld01 = 5 * CV_PI / 8;
+
+	float ls02 = 11 * CV_PI / 8;
+	float ld02 = 13 * CV_PI / 8;
+
+
+	float ls31 = 5 * CV_PI / 8;
+	float ld31 = 7 * CV_PI / 8;
+
+	float ls32 = 13 * CV_PI / 8;
+	float ld32 = 15 * CV_PI / 8;
+
+
+	float ls21 = 7 * CV_PI / 8;
+	float ld21 = 9 * CV_PI / 8;
+
+	float ls22 = 15 * CV_PI / 8;
+	float ld22 = 1 * CV_PI / 8;
+
+
+
+	for (int i = 1; i < src.rows - 1; i++) {
+		for (int j = 1; j < src.cols - 1; j++) {
+
+			if (((directie.at<float>(i, j) > ls11) && (directie.at<float>(i, j) <= ld11)) ||
+				((directie.at<float>(i, j) > ls12) && (directie.at<float>(i, j) <= ld12))) {
+
+				if (nonMax.at<uchar>(i - 1, j + 1) >= nonMax.at<uchar>(i, j) ||
+					nonMax.at<uchar>(i + 1, j - 1) >= nonMax.at<uchar>(i, j))
 					nonMax.at<uchar>(i, j) = 0;
-				}
 			}
-			// zona 1
-			if (directie.at<float>(i, j) <= -5*PI/8 && directie.at<float>(i, j) > -7*PI/8 || directie.at<float>(i, j) <= 3*PI/8 && directie.at<float>(i, j) > PI/8) {
-				if (modul.at<uchar>(i, j) < modul.at<uchar>(i-1, j+1) || modul.at<uchar>(i, j) < modul.at<uchar>(i+1, j-1)) {
+
+			if (((directie.at<float>(i, j) > ls01) && (directie.at<float>(i, j) <= ld01)) ||
+				((directie.at<float>(i, j) > ls02) && (directie.at<float>(i, j) <= ld02))) {
+
+				if (nonMax.at<uchar>(i - 1, j) >= nonMax.at<uchar>(i, j) ||
+					nonMax.at<uchar>(i + 1, j) >= nonMax.at<uchar>(i, j))
 					nonMax.at<uchar>(i, j) = 0;
-				}
 			}
-			// zona 2
-			if (directie.at<float>(i, j) >= -7*PI/8 && directie.at<float>(i, j) <= 7*PI/8 || directie.at<float>(i, j) <= PI/8 && directie.at<float>(i, j) > -PI/8) {
-				if (modul.at<uchar>(i, j) < modul.at<uchar>(i, j+1) || modul.at<uchar>(i, j) < modul.at<uchar>(i, j-1)) {
+
+			if (((directie.at<float>(i, j) > ls31) && (directie.at<float>(i, j) <= ld31)) ||
+				((directie.at<float>(i, j) > ls32) && (directie.at<float>(i, j) <= ld32))) {
+
+				if (nonMax.at<uchar>(i - 1, j - 1) >= nonMax.at<uchar>(i, j) ||
+					nonMax.at<uchar>(i + 1, j + 1) >= nonMax.at<uchar>(i, j))
 					nonMax.at<uchar>(i, j) = 0;
-				}
 			}
-			// zona 3
-			if (directie.at<float>(i, j) < 7*PI/8 && directie.at<float>(i, j) >= 5*PI/8 || directie.at<float>(i, j) >= -3*PI/8 && directie.at<float>(i, j) <= -PI/8) {
-				if (modul.at<uchar>(i, j) < modul.at<uchar>(i-1, j-1) || modul.at<uchar>(i, j) < modul.at<uchar>(i+1, j+1)) {
+
+			if (((directie.at<float>(i, j) > ls21) && (directie.at<float>(i, j) <= ld21)) ||
+				((directie.at<float>(i, j) > ls22) && (directie.at<float>(i, j) <= ld22))) {
+
+				if (nonMax.at<uchar>(i, j - 1) >= nonMax.at<uchar>(i, j) ||
+					nonMax.at<uchar>(i, j + 1) >= nonMax.at<uchar>(i, j))
 					nonMax.at<uchar>(i, j) = 0;
-				}
 			}
+
 		}
 	}
+
 	imshow("Non-max", nonMax);
 	// Step 4: adaptive binarization
 	Mat binarizare = nonMax.clone();
@@ -2791,21 +2819,20 @@ void canny(){
 
 	int nrPuncteZero = hist[0];
 	int nrTotalPuncte = (width-2) * (height-2);
-	float p = 0.1;
-	int nrPuncteMuchie = (int)ceil(p * (nrTotalPuncte - nrPuncteZero));
-	int nrNonMuchie = (int)ceil((1-p) * (nrTotalPuncte - nrPuncteZero));
+	float p = 0.15;
+	int nrPuncteMuchie = p * (nrTotalPuncte - nrPuncteZero);
+	int nrNonMuchie = (1-p) * (nrTotalPuncte - nrPuncteZero);
 
 	int treshold = 255;
 	sum = 0;
-
-	for (int i = 1; i < 256; i++) {
-		sum += hist[i];
+	int x;
+	for (x = 1; x < 256; x++) {
+		sum += hist[x];
 		if (sum > nrNonMuchie) {
-			treshold = i;
 			break;
 		}
 	}
-
+	treshold = x;
 	int pragAdaptiv = treshold;
 	std::cout << pragAdaptiv << std::endl;
 	std::cout << nrTotalPuncte << std::endl;
@@ -2820,7 +2847,7 @@ void canny(){
 				binarizare.at<uchar>(i, j) = 255;
 			}
 			else {
-				if (binarizare.at<uchar>(i, j) > 0.4*pragAdaptiv) {
+				if (binarizare.at<uchar>(i, j) > 0.6*pragAdaptiv) {
 					binarizare.at<uchar>(i, j) = 128;
 				}
 				else {
@@ -2860,6 +2887,512 @@ void canny(){
 	}
 	imshow("Canny", binarizare);
 	waitKey();
+}
+
+void calculateLeafProperties(const Mat& binaryImage, double& minArea, double& maxArea, double& minCircularity, double& maxCircularity) {
+	minArea = (std::numeric_limits<double>::max)();
+	maxArea = 0;
+	minCircularity = (std::numeric_limits<double>::max)();
+	maxCircularity = 0;
+
+	std::vector<std::vector<Point>> contours;
+	std::vector<Vec4i> hierarchy;
+	findContours(binaryImage, contours, hierarchy, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+
+	for (const auto& contour : contours) {
+		// Calculate area and perimeter
+		double area = contourArea(contour);
+		double perimeter = arcLength(contour, true);
+
+		// Calculate circularity
+		double circularity = 4 * CV_PI * area / (perimeter * perimeter);
+
+		// Update minimum and maximum values
+		minArea = (std::min)(minArea, area);
+		maxArea = (std::max)(maxArea, area);
+		minCircularity = (std::min)(minCircularity, circularity);
+		maxCircularity = (std::max)(maxCircularity, circularity);
+	}
+}
+
+void detectLeaves() {
+	// Your existing code for Canny edge detection
+	char fname[MAX_PATH];
+	openFileDlg(fname);
+	Mat src = imread(fname, IMREAD_GRAYSCALE);
+	imshow("Original", src);
+	int height = src.rows;
+	int width = src.cols;
+
+	// step 1: Filtrarea imaginii cu filtru Gaussian
+	float sigma = 0.8;
+	// dimensiunea filtrului e 6*sigma
+	int w = ceil(6 * sigma);
+	//x0, y0 sunt mijlocul filtrului
+	int x0 = w / 2;
+	int y0 = w / 2;
+
+	Mat gaussianMat = src.clone();
+
+	// filtru: exp(-(x-x0)^2 + (y-y0)^2 / 2*sigma^2) / 2*pi*sigma^2
+	Mat filtru = Mat(w, w, CV_32FC1);
+	float sum = 0;
+
+	for (int i = 0; i < w; i++) {
+		for (int j = 0; j < w; j++) {
+			filtru.at<float>(i, j) = exp(-((i - x0) * (i - x0) + (j - y0) * (j - y0)) / (2 * sigma * sigma)) / (2 * 3.1415 * sigma * sigma);
+			sum += filtru.at<float>(i, j);
+		}
+	}
+
+	for (int i = x0; i < height - x0; i++) {
+		for (int j = y0; j < width - y0; j++) {
+			float rez = 0;
+			for (int k = 0; k < w; k++) {
+				for (int l = 0; l < w; l++) {
+					rez += filtru.at<float>(k, l) * src.at<uchar>(i + k - x0, j + l - y0);
+				}
+			}
+			gaussianMat.at<uchar>(i, j) = rez / sum;
+		}
+	}
+	imshow("Gaussian Mat", gaussianMat);
+
+	// step 2: Filtram imaginea cu filtru Sobel
+	Mat sobel(3, 3, CV_32FC1);
+	sobel.at<float>(0, 0) = 1;
+	sobel.at<float>(0, 1) = 2;
+	sobel.at<float>(0, 2) = 1;
+	sobel.at<float>(1, 0) = 0;
+	sobel.at<float>(1, 1) = 0;
+	sobel.at<float>(1, 2) = 0;
+	sobel.at<float>(2, 0) = -1;
+	sobel.at<float>(2, 1) = -2;
+	sobel.at<float>(2, 2) = -1;
+
+	Mat gx = Mat(height, width, CV_32SC1, Scalar(0));
+	Mat gy = Mat(height, width, CV_32SC1, Scalar(0));
+
+	for (int i = 1; i < height - 1; i++) {
+		for (int j = 1; j < width - 1; j++) {
+			int rezx = 0;
+			int rezy = 0;
+			for (int k = 0; k < 3; k++) {
+				for (int l = 0; l < 3; l++) {
+					rezx += sobel.at<float>(2 - l, 2 - k) * gaussianMat.at<uchar>(i + k - 1, j + l - 1);
+					rezy += sobel.at<float>(k, l) * gaussianMat.at<uchar>(i + k - 1, j + l - 1);
+				}
+			}
+			gx.at<int>(i, j) = rezx;
+			gy.at<int>(i, j) = rezy;
+		}
+	}
+
+	Mat modul = Mat(height, width, CV_8UC1, Scalar(0));
+	normalize(gaussianMat, modul, 0, 255, NORM_MINMAX, CV_8UC1);
+	// direction - mat de float
+	Mat directie = Mat(height, width, CV_32F, Scalar(0.0));
+
+	for (int i = 0; i < height; i++) {
+		for (int j = 0; j < width; j++) {
+			modul.at<uchar>(i, j) = sqrt(pow(gx.at<int>(i, j), 2) + pow(gy.at<int>(i, j), 2)) / (4.0 * sqrt(2));
+			directie.at<float>(i, j) = (atan2(gy.at<int>(i, j), gx.at<int>(i, j)) + CV_PI);
+		}
+	}
+
+	imshow("Modul", modul);
+
+	// step 3: Non-maximum suppression
+	Mat nonMax = Mat(height, width, CV_8UC1, Scalar(0));
+	normalize(modul, nonMax, 0, 255, NORM_MINMAX, CV_8UC1);
+
+	float ls11 = CV_PI / 8;
+	float ld11 = 3 * CV_PI / 8;
+
+	float ls12 = 9 * CV_PI / 8;
+	float ld12 = 11 * CV_PI / 8;
+
+
+	float ls01 = 3 * CV_PI / 8;
+	float ld01 = 5 * CV_PI / 8;
+
+	float ls02 = 11 * CV_PI / 8;
+	float ld02 = 13 * CV_PI / 8;
+
+
+	float ls31 = 5 * CV_PI / 8;
+	float ld31 = 7 * CV_PI / 8;
+
+	float ls32 = 13 * CV_PI / 8;
+	float ld32 = 15 * CV_PI / 8;
+
+
+	float ls21 = 7 * CV_PI / 8;
+	float ld21 = 9 * CV_PI / 8;
+
+	float ls22 = 15 * CV_PI / 8;
+	float ld22 = 1 * CV_PI / 8;
+
+
+
+	for (int i = 1; i < src.rows - 1; i++) {
+		for (int j = 1; j < src.cols - 1; j++) {
+
+			if (((directie.at<float>(i, j) > ls11) && (directie.at<float>(i, j) <= ld11)) ||
+				((directie.at<float>(i, j) > ls12) && (directie.at<float>(i, j) <= ld12))) {
+
+				if (nonMax.at<uchar>(i - 1, j + 1) >= nonMax.at<uchar>(i, j) ||
+					nonMax.at<uchar>(i + 1, j - 1) >= nonMax.at<uchar>(i, j))
+					nonMax.at<uchar>(i, j) = 0;
+			}
+
+			if (((directie.at<float>(i, j) > ls01) && (directie.at<float>(i, j) <= ld01)) ||
+				((directie.at<float>(i, j) > ls02) && (directie.at<float>(i, j) <= ld02))) {
+
+				if (nonMax.at<uchar>(i - 1, j) >= nonMax.at<uchar>(i, j) ||
+					nonMax.at<uchar>(i + 1, j) >= nonMax.at<uchar>(i, j))
+					nonMax.at<uchar>(i, j) = 0;
+			}
+
+			if (((directie.at<float>(i, j) > ls31) && (directie.at<float>(i, j) <= ld31)) ||
+				((directie.at<float>(i, j) > ls32) && (directie.at<float>(i, j) <= ld32))) {
+
+				if (nonMax.at<uchar>(i - 1, j - 1) >= nonMax.at<uchar>(i, j) ||
+					nonMax.at<uchar>(i + 1, j + 1) >= nonMax.at<uchar>(i, j))
+					nonMax.at<uchar>(i, j) = 0;
+			}
+
+			if (((directie.at<float>(i, j) > ls21) && (directie.at<float>(i, j) <= ld21)) ||
+				((directie.at<float>(i, j) > ls22) && (directie.at<float>(i, j) <= ld22))) {
+
+				if (nonMax.at<uchar>(i, j - 1) >= nonMax.at<uchar>(i, j) ||
+					nonMax.at<uchar>(i, j + 1) >= nonMax.at<uchar>(i, j))
+					nonMax.at<uchar>(i, j) = 0;
+			}
+
+		}
+	}
+
+	imshow("Non-max", nonMax);
+	// Step 4: adaptive binarization
+	Mat binarizare = nonMax.clone();
+
+	int hist[256] = { 0 };
+	for (int i = 0; i < height; i++)
+	{
+		for (int j = 0; j < width; j++)
+		{
+			hist[binarizare.at<uchar>(i, j)]++;
+		}
+	}
+	showHistogram("modified histogram", hist, width, height);
+
+	int nrPuncteZero = hist[0];
+	int nrTotalPuncte = (width - 2) * (height - 2);
+	float p = 0.15;
+	int nrPuncteMuchie = p * (nrTotalPuncte - nrPuncteZero);
+	int nrNonMuchie = (1 - p) * (nrTotalPuncte - nrPuncteZero);
+
+	int treshold = 255;
+	sum = 0;
+	int x;
+	for (x = 1; x < 256; x++) {
+		sum += hist[x];
+		if (sum > nrNonMuchie) {
+			break;
+		}
+	}
+	treshold = x;
+	int pragAdaptiv = treshold;
+	std::cout << pragAdaptiv << std::endl;
+	std::cout << nrTotalPuncte << std::endl;
+	std::cout << nrPuncteZero << std::endl;
+	std::cout << nrNonMuchie << std::endl;
+	std::cout << sum << std::endl;
+
+	// Step 5: Extinderea muchiilor prin histereza
+	for (int i = 1; i < height - 1; i++) {
+		for (int j = 1; j < width - 1; j++) {
+			if (binarizare.at<uchar>(i, j) > pragAdaptiv) {
+				binarizare.at<uchar>(i, j) = 255;
+			}
+			else {
+				if (binarizare.at<uchar>(i, j) > 0.6 * pragAdaptiv) {
+					binarizare.at<uchar>(i, j) = 128;
+				}
+				else {
+					binarizare.at<uchar>(i, j) = 0;
+				}
+			}
+		}
+	}
+	imshow("Binarizare", binarizare);
+	//In continuare, vrem sa evidențiem muchiile tari. Daca într-o muchie exista si puncte tari si puncte slabe, le vom face pe cele slabe puncte tari, pentru a nu avea intermediari. Daca o muchie are doar puncte slabe si nu are nici un punct tare, va fi ștearsăcomplet.Putem sa folosim o coada in care sa stocam punctele tari pe care le găsim. Pentru fiecare punct tare căutăm daca exista puncte slabe printre vecinii lui, iar daca exista, le facem tari si le adăugăm in coada.Dupăce ne asiguram ca toate punctele tari au fost extinse in muchiile din care fac parte, parcurgem încăo data imaginea si suprimam (înlocuim cu 0) toate punctele slabe (de intensitate 128), pentru ca ele fac parte din muchii complet slabe si nu mai avem nevoie de ele.
+	std::queue<Point> coada;
+	for (int i = 1; i < height - 1; i++) {
+		for (int j = 1; j < width - 1; j++) {
+			if (binarizare.at<uchar>(i, j) == 255) {
+				coada.push(Point(i, j));
+				while (!coada.empty()) {
+					Point punct = coada.front();
+					coada.pop();
+					for (int k = -1; k <= 1; k++) {
+						for (int l = -1; l <= 1; l++) {
+							if (binarizare.at<uchar>(punct.x + k, punct.y + l) == 128) {
+								binarizare.at<uchar>(punct.x + k, punct.y + l) = 255;
+								coada.push(Point(punct.x + k, punct.y + l));
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	for (int i = 1; i < height - 1; i++) {
+		for (int j = 1; j < width - 1; j++) {
+			if (binarizare.at<uchar>(i, j) == 128) {
+				binarizare.at<uchar>(i, j) = 0;
+			}
+		}
+	}
+	imshow("Canny", binarizare);
+	// Step 6: Perform contour detection on the binary image & calculate leaf properties
+	std::vector<std::vector<cv::Point>> contours;
+	cv::findContours(binarizare.clone(), contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+	double minArea, maxArea, minCircularity, maxCircularity;
+	calculateLeafProperties(binarizare, minArea, maxArea, minCircularity, maxCircularity);
+
+	std::cout << "Min Leaf Area: " << minArea << std::endl;
+	std::cout << "Max Leaf Area: " << maxArea << std::endl;
+	std::cout << "Min Circularity: " << minCircularity << std::endl;
+	std::cout << "Max Circularity: " << maxCircularity << std::endl;
+
+	// Step 7: Filter contours based on area and shape
+	std::vector<std::vector<cv::Point>> leafContours;
+	for (const auto& contour : contours) {
+		double area = cv::contourArea(contour);
+		if (area > minArea && area < maxArea) {
+			double perimeter = cv::arcLength(contour, true);
+			double circularity = 4 * CV_PI * area / (perimeter * perimeter);
+			if (circularity > minCircularity && circularity < maxCircularity) {
+				leafContours.push_back(contour);
+			}
+		}
+	}
+
+	// Step 8: Draw contours on the original image
+	cv::Mat result = src.clone();
+	cv::drawContours(result, leafContours, -1, cv::Scalar(0, 255, 0), 2);
+
+	// Display the result
+	cv::imshow("Leaves", result);
+	cv::waitKey();
+}
+
+void CannyEdgeDetection() {
+	Mat src;
+
+	char fname[MAX_PATH];
+
+	while (openFileDlg(fname)) {
+		src = imread(fname, 0);
+		imshow("originalImage", src);
+
+		GaussianBlur(src, src, Size(3, 3), 0.5, 0.5);
+
+		Mat fx = Mat(src.rows, src.cols, CV_32SC1, Scalar(0));
+		Mat fy = Mat(src.rows, src.cols, CV_32SC1, Scalar(0));
+		Mat module = Mat(src.rows, src.cols, CV_8UC1, Scalar(0));
+		Mat direction = Mat(src.rows, src.cols, CV_32F, Scalar(0.0));
+
+		int filterx[3][3] = { -1, 0, 1,-2, 0, 2,-1, 0, 1 };
+		int filtery[3][3] = { 1, 2, 1, 0, 0, 0, -1,-2, -1 };
+
+		for (int i = 1; i < src.rows - 1; i++) {
+			for (int j = 1; j < src.cols - 1; j++) {
+				int pixelValx = 0;
+				int pixelValy = 0;
+
+				for (int u = 0; u < 3; u++) {
+					for (int v = 0; v < 3; v++) {
+						pixelValx += filterx[u][v] * src.at<uchar>(i + u - 1, j + v - 1);
+						pixelValy += filtery[u][v] * src.at<uchar>(i + u - 1, j + v - 1);
+
+					}
+				}
+				fx.at<int>(i, j) = pixelValx;
+				fy.at<int>(i, j) = pixelValy;
+
+			}
+		}
+
+		for (int i = 1; i < src.rows - 1; i++) {
+			for (int j = 1; j < src.cols - 1; j++) {
+				module.at<uchar>(i, j) = sqrt(pow(fx.at<int>(i, j), 2) + pow(fy.at<int>(i, j), 2)) / (4.0 * sqrt(2));
+				direction.at<float>(i, j) = (atan2(fy.at<int>(i, j), fx.at<int>(i, j)) + CV_PI);
+			}
+		}
+
+		Mat module_cln = module.clone();
+
+		float ls11 = CV_PI / 8;
+		float ld11 = 3 * CV_PI / 8;
+
+		float ls12 = 9 * CV_PI / 8;
+		float ld12 = 11 * CV_PI / 8;
+
+
+		float ls01 = 3 * CV_PI / 8;
+		float ld01 = 5 * CV_PI / 8;
+
+		float ls02 = 11 * CV_PI / 8;
+		float ld02 = 13 * CV_PI / 8;
+
+
+		float ls31 = 5 * CV_PI / 8;
+		float ld31 = 7 * CV_PI / 8;
+
+		float ls32 = 13 * CV_PI / 8;
+		float ld32 = 15 * CV_PI / 8;
+
+
+		float ls21 = 7 * CV_PI / 8;
+		float ld21 = 9 * CV_PI / 8;
+
+		float ls22 = 15 * CV_PI / 8;
+		float ld22 = 1 * CV_PI / 8;
+
+
+
+		for (int i = 1; i < src.rows - 1; i++) {
+			for (int j = 1; j < src.cols - 1; j++) {
+
+				if (((direction.at<float>(i, j) > ls11) && (direction.at<float>(i, j) <= ld11)) ||
+					((direction.at<float>(i, j) > ls12) && (direction.at<float>(i, j) <= ld12))) {
+
+					if (module_cln.at<uchar>(i - 1, j + 1) >= module_cln.at<uchar>(i, j) ||
+						module_cln.at<uchar>(i + 1, j - 1) >= module_cln.at<uchar>(i, j))
+						module_cln.at<uchar>(i, j) = 0;
+				}
+
+				if (((direction.at<float>(i, j) > ls01) && (direction.at<float>(i, j) <= ld01)) ||
+					((direction.at<float>(i, j) > ls02) && (direction.at<float>(i, j) <= ld02))) {
+
+					if (module_cln.at<uchar>(i - 1, j) >= module_cln.at<uchar>(i, j) ||
+						module_cln.at<uchar>(i + 1, j) >= module_cln.at<uchar>(i, j))
+						module_cln.at<uchar>(i, j) = 0;
+				}
+
+				if (((direction.at<float>(i, j) > ls31) && (direction.at<float>(i, j) <= ld31)) ||
+					((direction.at<float>(i, j) > ls32) && (direction.at<float>(i, j) <= ld32))) {
+
+					if (module_cln.at<uchar>(i - 1, j - 1) >= module_cln.at<uchar>(i, j) ||
+						module_cln.at<uchar>(i + 1, j + 1) >= module_cln.at<uchar>(i, j))
+						module_cln.at<uchar>(i, j) = 0;
+				}
+
+				if (((direction.at<float>(i, j) > ls21) && (direction.at<float>(i, j) <= ld21)) ||
+					((direction.at<float>(i, j) > ls22) && (direction.at<float>(i, j) <= ld22))) {
+
+					if (module_cln.at<uchar>(i, j - 1) >= module_cln.at<uchar>(i, j) ||
+						module_cln.at<uchar>(i, j + 1) >= module_cln.at<uchar>(i, j))
+						module_cln.at<uchar>(i, j) = 0;
+				}
+
+			}
+		}
+
+		imshow("module", module);
+
+		imshow("module_clone", module_cln);
+
+		int zeroGradientModulePixels = 0;
+		float p = 0.15;
+
+		for (int i = 1; i < module.rows - 1; i++) {
+			for (int j = 1; j < module.cols - 1; j++) {
+				if (module_cln.at<uchar>(i, j) == 0) {
+					zeroGradientModulePixels++;
+				}
+			}
+		}
+
+		int numberEdgePixels = p * ((module.rows - 2) * (module.cols - 2) - zeroGradientModulePixels);
+		int numberNonEdgePixels = (1 - p) * ((module.rows - 2) * (module.cols - 2) - zeroGradientModulePixels);
+
+		int histogram[256] = {};
+
+		for (int i = 1; i < module.rows - 1; i++) {
+			for (int j = 1; j < module.cols - 1; j++) {
+				histogram[module_cln.at<uchar>(i, j)]++;
+			}
+		}
+		int s = 0;
+		int index;
+		for (index = 1; index < 256; index++) {
+
+			s += histogram[index];
+			if (s > numberNonEdgePixels)
+				break;
+		}
+		int thHigh = index;
+
+		int thLow = 0.4 * thHigh;
+
+		for (int i = 0; i < module.rows; i++) {
+			for (int j = 0; j < module.cols; j++) {
+				int value = module_cln.at<uchar>(i, j);
+
+				if (value < thLow)
+					module_cln.at<uchar>(i, j) = 0;
+				else if (value > thHigh)
+					module_cln.at<uchar>(i, j) = 255;
+				else
+					module_cln.at<uchar>(i, j) = 128;
+			}
+		}
+
+		imshow("module_thresholded", module_cln);
+
+		Mat	labels(src.rows, src.cols, CV_8UC1);
+		labels = Mat::zeros(src.rows, src.cols, CV_8UC1);
+
+		int di[8] = { -1,0,1,0,-1,1,-1,1 };
+		int dj[8] = { 0,-1,0,1,-1,1,1,-1 };
+
+		for (int i = 0; i < src.rows; i++) {
+			for (int j = 0; j < src.cols; j++) {
+				if ((module_cln.at<uchar>(i, j) == 255) && (labels.at<uchar>(i, j) == 0)) {
+					std::queue<Point> Q;
+					labels.at<uchar>(i, j) = 1;
+					Q.push({ i,j });
+					while (!Q.empty()) {
+						Point q = Q.front();
+						Q.pop();
+
+						for (int k = 0; k < 8; k++)
+							if ((module_cln.at<uchar>(q.x + di[k], q.y + dj[k]) == 128)
+								&& (labels.at<uchar>(q.x + di[k], q.y + dj[k]) == 0)) {
+								module_cln.at<uchar>(q.x + di[k], q.y + dj[k]) = 255;
+								labels.at<uchar>(q.x + di[k], q.y + dj[k]) = 1;
+								Q.push({ q.x + di[k], q.y + dj[k] });
+							}
+					}
+				}
+			}
+		}
+
+		for (int i = 0; i < src.rows; i++) {
+			for (int j = 0; j < src.cols; j++) {
+				if (module_cln.at<uchar>(i, j) == 128)
+					module_cln.at<uchar>(i, j) = 0;
+			}
+		}
+
+		imshow("edges", module_cln);
+		waitKey(0);
+	}
 }
 
 int main()
@@ -2914,6 +3447,7 @@ int main()
 		printf(" 42 - Salt and Pepper noise Filter (Median, Minimal, Maximal)\n");
 		printf(" 43 - Gaussian noise Filter\n");
 		printf(" 44 - Canny edge detection\n");
+		printf(" 45 - Leaf detection\n");
 
 		printf(" 0 - Exit\n\n");
 		printf("Option: ");
@@ -3106,6 +3640,9 @@ int main()
 			break;
 		case 44:
 			canny();
+			break;
+		case 45:
+			detectLeaves();
 			break;
 		}
 	} while (op != 0);
