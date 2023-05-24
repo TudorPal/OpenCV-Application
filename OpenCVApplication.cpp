@@ -2889,25 +2889,17 @@ void canny(){
 	waitKey();
 }
 
-void calculateLeafProperties(const Mat& binaryImage, double& minArea, double& maxArea, double& minCircularity, double& maxCircularity) {
+void calculateLeafProperties(const Mat& binaryImage, double& minArea, double& maxArea, double& minCircularity, double& maxCircularity, std::vector<std::vector<Point>> contours) {
 	minArea = (std::numeric_limits<double>::max)();
 	maxArea = 0;
 	minCircularity = (std::numeric_limits<double>::max)();
 	maxCircularity = 0;
 
-	std::vector<std::vector<Point>> contours;
-	std::vector<Vec4i> hierarchy;
-	findContours(binaryImage, contours, hierarchy, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
-
 	for (const auto& contour : contours) {
-		// Calculate area and perimeter
 		double area = contourArea(contour);
 		double perimeter = arcLength(contour, true);
-
-		// Calculate circularity
 		double circularity = 4 * CV_PI * area / (perimeter * perimeter);
 
-		// Update minimum and maximum values
 		minArea = (std::min)(minArea, area);
 		maxArea = (std::max)(maxArea, area);
 		minCircularity = (std::min)(minCircularity, circularity);
@@ -2915,12 +2907,107 @@ void calculateLeafProperties(const Mat& binaryImage, double& minArea, double& ma
 	}
 }
 
+cv::Rect findStemCoordinates(const cv::Mat& binaryImage) {
+	std::vector<std::vector<cv::Point>> contours;
+	cv::findContours(binaryImage, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+	double maxArea = 0;
+	int maxAreaIdx = -1;
+
+	for (size_t i = 0; i < contours.size(); ++i) {
+		double area = cv::contourArea(contours[i]);
+		if (area > maxArea) {
+			maxArea = area;
+			maxAreaIdx = static_cast<int>(i);
+		}
+	}
+
+	cv::Rect stemRect;
+	if (maxAreaIdx != -1) {
+		stemRect = cv::boundingRect(contours[maxAreaIdx]);
+	}
+
+	return stemRect;
+}
+
+bool hasBlackNeighbor(const cv::Mat& image, int x, int y)
+{
+	int dx[8] = { -1, -1, 0, 1, 1, 1, 0, -1 };
+	int dy[8] = { 0, -1, -1, -1, 0, 1, 1, 1 };
+
+	for (int i = 0; i < 8; ++i)
+	{
+		int nx = x + dx[i];
+		int ny = y + dy[i];
+
+		if (nx >= 0 && ny >= 0 && nx < image.cols && ny < image.rows)
+		{
+			if (image.at<uchar>(ny, nx) == 0)
+				return true;
+		}
+	}
+
+	return false;
+}
+
+void traverseContour(const cv::Mat& grayscaleImage, cv::Mat& contourImage, cv::Point startPoint, std::vector<cv::Point>& contour)
+{
+	int x = startPoint.x;
+	int y = startPoint.y;
+	if (x < 0 || y < 0 || x >= grayscaleImage.cols || y >= grayscaleImage.rows)
+		return;
+
+	contour.push_back(startPoint);
+	contourImage.at<uchar>(y, x) = 0;
+
+	int dx[8] = { -1, -1, 0, 1, 1, 1, 0, -1 };
+	int dy[8] = { 0, -1, -1, -1, 0, 1, 1, 1 };
+
+	for (int i = 0; i < 8; ++i)
+	{
+		int nx = x + dx[i];
+		int ny = y + dy[i];
+
+		if (nx >= 0 && ny >= 0 && nx < grayscaleImage.cols && ny < grayscaleImage.rows)
+		{
+			if (grayscaleImage.at<uchar>(ny, nx) < 255 && contourImage.at<uchar>(ny, nx) != 0)
+			{
+				traverseContour(grayscaleImage, contourImage, cv::Point(nx, ny), contour);
+			}
+		}
+	}
+}
+
+void findContours2(const cv::Mat& grayscaleImage, std::vector<std::vector<cv::Point>>& contours)
+{
+	contours.clear();
+	cv::Mat contourImage = cv::Mat::zeros(grayscaleImage.size(), CV_8UC1);
+	for (int y = 0; y < grayscaleImage.rows; ++y)
+	{
+		for (int x = 0; x < grayscaleImage.cols; ++x)
+		{
+			if (grayscaleImage.at<uchar>(y, x) < 255)
+			{
+				contourImage.at<uchar>(y, x) = 0;
+				if (hasBlackNeighbor(contourImage, x, y))
+				{
+					std::vector<cv::Point> contour;
+					cv::Point startPoint(x, y);
+					traverseContour(grayscaleImage, contourImage, startPoint, contour);
+					contours.push_back(contour);
+				}
+			}
+		}
+	}
+}
+
 void detectLeaves() {
-	// Your existing code for Canny edge detection
 	char fname[MAX_PATH];
 	openFileDlg(fname);
-	Mat src = imread(fname, IMREAD_GRAYSCALE);
-	imshow("Original", src);
+	Mat srcColor = imread(fname, IMREAD_COLOR);
+	Mat src;
+	cv::cvtColor(srcColor, src, cv::COLOR_BGR2GRAY);
+	imshow("Original", srcColor);
 	int height = src.rows;
 	int width = src.cols;
 
@@ -2956,7 +3043,6 @@ void detectLeaves() {
 			gaussianMat.at<uchar>(i, j) = rez / sum;
 		}
 	}
-	imshow("Gaussian Mat", gaussianMat);
 
 	// step 2: Filtram imaginea cu filtru Sobel
 	Mat sobel(3, 3, CV_32FC1);
@@ -2999,8 +3085,6 @@ void detectLeaves() {
 			directie.at<float>(i, j) = (atan2(gy.at<int>(i, j), gx.at<int>(i, j)) + CV_PI);
 		}
 	}
-
-	imshow("Modul", modul);
 
 	// step 3: Non-maximum suppression
 	Mat nonMax = Mat(height, width, CV_8UC1, Scalar(0));
@@ -3085,7 +3169,6 @@ void detectLeaves() {
 			hist[binarizare.at<uchar>(i, j)]++;
 		}
 	}
-	showHistogram("modified histogram", hist, width, height);
 
 	int nrPuncteZero = hist[0];
 	int nrTotalPuncte = (width - 2) * (height - 2);
@@ -3126,8 +3209,6 @@ void detectLeaves() {
 			}
 		}
 	}
-	imshow("Binarizare", binarizare);
-	//In continuare, vrem sa evidențiem muchiile tari. Daca într-o muchie exista si puncte tari si puncte slabe, le vom face pe cele slabe puncte tari, pentru a nu avea intermediari. Daca o muchie are doar puncte slabe si nu are nici un punct tare, va fi ștearsăcomplet.Putem sa folosim o coada in care sa stocam punctele tari pe care le găsim. Pentru fiecare punct tare căutăm daca exista puncte slabe printre vecinii lui, iar daca exista, le facem tari si le adăugăm in coada.Dupăce ne asiguram ca toate punctele tari au fost extinse in muchiile din care fac parte, parcurgem încăo data imaginea si suprimam (înlocuim cu 0) toate punctele slabe (de intensitate 128), pentru ca ele fac parte din muchii complet slabe si nu mai avem nevoie de ele.
 	std::queue<Point> coada;
 	for (int i = 1; i < height - 1; i++) {
 		for (int j = 1; j < width - 1; j++) {
@@ -3156,23 +3237,34 @@ void detectLeaves() {
 		}
 	}
 	imshow("Canny", binarizare);
-	// Step 6: Perform contour detection on the binary image & calculate leaf properties
+	// Open the image to reduce the number of holes in the contour
+	Mat temp = erode(binarizare.clone());
+	Mat opened = dilate(temp);
+	imshow("Open", opened);
+	binarizare = opened.clone();
+
+	// Step 6: Contour detection on the binary image & calculate leaf properties
 	std::vector<std::vector<cv::Point>> contours;
 	cv::findContours(binarizare.clone(), contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
 
 	double minArea, maxArea, minCircularity, maxCircularity;
-	calculateLeafProperties(binarizare, minArea, maxArea, minCircularity, maxCircularity);
+	calculateLeafProperties(binarizare, minArea, maxArea, minCircularity, maxCircularity, contours);
 
 	std::cout << "Min Leaf Area: " << minArea << std::endl;
 	std::cout << "Max Leaf Area: " << maxArea << std::endl;
 	std::cout << "Min Circularity: " << minCircularity << std::endl;
 	std::cout << "Max Circularity: " << maxCircularity << std::endl;
 
+	/*cv::Mat maskedImage;
+	binarizare.copyTo(maskedImage);
+	cv::Rect stemROI = findStemCoordinates(maskedImage);
+	maskedImage(stemROI) = 0;*/
+
 	// Step 7: Filter contours based on area and shape
 	std::vector<std::vector<cv::Point>> leafContours;
 	for (const auto& contour : contours) {
 		double area = cv::contourArea(contour);
-		if (area > minArea && area < maxArea) {
+		if (area > maxArea/3 && area < maxArea*5) {
 			double perimeter = cv::arcLength(contour, true);
 			double circularity = 4 * CV_PI * area / (perimeter * perimeter);
 			if (circularity > minCircularity && circularity < maxCircularity) {
@@ -3181,218 +3273,29 @@ void detectLeaves() {
 		}
 	}
 
+
+	// Only keep what's inside the contours
+	cv::Mat mask = cv::Mat::zeros(src.size(), CV_8UC1);
+	//cv::findContours(binarizare.clone(), contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+	cv::drawContours(mask, leafContours, -1, cv::Scalar(255), cv::FILLED);
+
+	cv::Mat result2 = srcColor.clone();
+	for (int y = 0; y < result2.rows; ++y) {
+		for (int x = 0; x < result2.cols; ++x) {
+			if (mask.at<uchar>(y, x) == 255) {
+				result2.at<cv::Vec3b>(y, x) = cv::Vec3b(0, 0, 255);
+			}
+		}
+	}
+
 	// Step 8: Draw contours on the original image
 	cv::Mat result = src.clone();
-	cv::drawContours(result, leafContours, -1, cv::Scalar(0, 255, 0), 2);
+	cv::drawContours(result, leafContours, -1, cv::Scalar(0), 2);
 
 	// Display the result
 	cv::imshow("Leaves", result);
+	cv::imshow("Original Image with Red Leaves", result2);
 	cv::waitKey();
-}
-
-void CannyEdgeDetection() {
-	Mat src;
-
-	char fname[MAX_PATH];
-
-	while (openFileDlg(fname)) {
-		src = imread(fname, 0);
-		imshow("originalImage", src);
-
-		GaussianBlur(src, src, Size(3, 3), 0.5, 0.5);
-
-		Mat fx = Mat(src.rows, src.cols, CV_32SC1, Scalar(0));
-		Mat fy = Mat(src.rows, src.cols, CV_32SC1, Scalar(0));
-		Mat module = Mat(src.rows, src.cols, CV_8UC1, Scalar(0));
-		Mat direction = Mat(src.rows, src.cols, CV_32F, Scalar(0.0));
-
-		int filterx[3][3] = { -1, 0, 1,-2, 0, 2,-1, 0, 1 };
-		int filtery[3][3] = { 1, 2, 1, 0, 0, 0, -1,-2, -1 };
-
-		for (int i = 1; i < src.rows - 1; i++) {
-			for (int j = 1; j < src.cols - 1; j++) {
-				int pixelValx = 0;
-				int pixelValy = 0;
-
-				for (int u = 0; u < 3; u++) {
-					for (int v = 0; v < 3; v++) {
-						pixelValx += filterx[u][v] * src.at<uchar>(i + u - 1, j + v - 1);
-						pixelValy += filtery[u][v] * src.at<uchar>(i + u - 1, j + v - 1);
-
-					}
-				}
-				fx.at<int>(i, j) = pixelValx;
-				fy.at<int>(i, j) = pixelValy;
-
-			}
-		}
-
-		for (int i = 1; i < src.rows - 1; i++) {
-			for (int j = 1; j < src.cols - 1; j++) {
-				module.at<uchar>(i, j) = sqrt(pow(fx.at<int>(i, j), 2) + pow(fy.at<int>(i, j), 2)) / (4.0 * sqrt(2));
-				direction.at<float>(i, j) = (atan2(fy.at<int>(i, j), fx.at<int>(i, j)) + CV_PI);
-			}
-		}
-
-		Mat module_cln = module.clone();
-
-		float ls11 = CV_PI / 8;
-		float ld11 = 3 * CV_PI / 8;
-
-		float ls12 = 9 * CV_PI / 8;
-		float ld12 = 11 * CV_PI / 8;
-
-
-		float ls01 = 3 * CV_PI / 8;
-		float ld01 = 5 * CV_PI / 8;
-
-		float ls02 = 11 * CV_PI / 8;
-		float ld02 = 13 * CV_PI / 8;
-
-
-		float ls31 = 5 * CV_PI / 8;
-		float ld31 = 7 * CV_PI / 8;
-
-		float ls32 = 13 * CV_PI / 8;
-		float ld32 = 15 * CV_PI / 8;
-
-
-		float ls21 = 7 * CV_PI / 8;
-		float ld21 = 9 * CV_PI / 8;
-
-		float ls22 = 15 * CV_PI / 8;
-		float ld22 = 1 * CV_PI / 8;
-
-
-
-		for (int i = 1; i < src.rows - 1; i++) {
-			for (int j = 1; j < src.cols - 1; j++) {
-
-				if (((direction.at<float>(i, j) > ls11) && (direction.at<float>(i, j) <= ld11)) ||
-					((direction.at<float>(i, j) > ls12) && (direction.at<float>(i, j) <= ld12))) {
-
-					if (module_cln.at<uchar>(i - 1, j + 1) >= module_cln.at<uchar>(i, j) ||
-						module_cln.at<uchar>(i + 1, j - 1) >= module_cln.at<uchar>(i, j))
-						module_cln.at<uchar>(i, j) = 0;
-				}
-
-				if (((direction.at<float>(i, j) > ls01) && (direction.at<float>(i, j) <= ld01)) ||
-					((direction.at<float>(i, j) > ls02) && (direction.at<float>(i, j) <= ld02))) {
-
-					if (module_cln.at<uchar>(i - 1, j) >= module_cln.at<uchar>(i, j) ||
-						module_cln.at<uchar>(i + 1, j) >= module_cln.at<uchar>(i, j))
-						module_cln.at<uchar>(i, j) = 0;
-				}
-
-				if (((direction.at<float>(i, j) > ls31) && (direction.at<float>(i, j) <= ld31)) ||
-					((direction.at<float>(i, j) > ls32) && (direction.at<float>(i, j) <= ld32))) {
-
-					if (module_cln.at<uchar>(i - 1, j - 1) >= module_cln.at<uchar>(i, j) ||
-						module_cln.at<uchar>(i + 1, j + 1) >= module_cln.at<uchar>(i, j))
-						module_cln.at<uchar>(i, j) = 0;
-				}
-
-				if (((direction.at<float>(i, j) > ls21) && (direction.at<float>(i, j) <= ld21)) ||
-					((direction.at<float>(i, j) > ls22) && (direction.at<float>(i, j) <= ld22))) {
-
-					if (module_cln.at<uchar>(i, j - 1) >= module_cln.at<uchar>(i, j) ||
-						module_cln.at<uchar>(i, j + 1) >= module_cln.at<uchar>(i, j))
-						module_cln.at<uchar>(i, j) = 0;
-				}
-
-			}
-		}
-
-		imshow("module", module);
-
-		imshow("module_clone", module_cln);
-
-		int zeroGradientModulePixels = 0;
-		float p = 0.15;
-
-		for (int i = 1; i < module.rows - 1; i++) {
-			for (int j = 1; j < module.cols - 1; j++) {
-				if (module_cln.at<uchar>(i, j) == 0) {
-					zeroGradientModulePixels++;
-				}
-			}
-		}
-
-		int numberEdgePixels = p * ((module.rows - 2) * (module.cols - 2) - zeroGradientModulePixels);
-		int numberNonEdgePixels = (1 - p) * ((module.rows - 2) * (module.cols - 2) - zeroGradientModulePixels);
-
-		int histogram[256] = {};
-
-		for (int i = 1; i < module.rows - 1; i++) {
-			for (int j = 1; j < module.cols - 1; j++) {
-				histogram[module_cln.at<uchar>(i, j)]++;
-			}
-		}
-		int s = 0;
-		int index;
-		for (index = 1; index < 256; index++) {
-
-			s += histogram[index];
-			if (s > numberNonEdgePixels)
-				break;
-		}
-		int thHigh = index;
-
-		int thLow = 0.4 * thHigh;
-
-		for (int i = 0; i < module.rows; i++) {
-			for (int j = 0; j < module.cols; j++) {
-				int value = module_cln.at<uchar>(i, j);
-
-				if (value < thLow)
-					module_cln.at<uchar>(i, j) = 0;
-				else if (value > thHigh)
-					module_cln.at<uchar>(i, j) = 255;
-				else
-					module_cln.at<uchar>(i, j) = 128;
-			}
-		}
-
-		imshow("module_thresholded", module_cln);
-
-		Mat	labels(src.rows, src.cols, CV_8UC1);
-		labels = Mat::zeros(src.rows, src.cols, CV_8UC1);
-
-		int di[8] = { -1,0,1,0,-1,1,-1,1 };
-		int dj[8] = { 0,-1,0,1,-1,1,1,-1 };
-
-		for (int i = 0; i < src.rows; i++) {
-			for (int j = 0; j < src.cols; j++) {
-				if ((module_cln.at<uchar>(i, j) == 255) && (labels.at<uchar>(i, j) == 0)) {
-					std::queue<Point> Q;
-					labels.at<uchar>(i, j) = 1;
-					Q.push({ i,j });
-					while (!Q.empty()) {
-						Point q = Q.front();
-						Q.pop();
-
-						for (int k = 0; k < 8; k++)
-							if ((module_cln.at<uchar>(q.x + di[k], q.y + dj[k]) == 128)
-								&& (labels.at<uchar>(q.x + di[k], q.y + dj[k]) == 0)) {
-								module_cln.at<uchar>(q.x + di[k], q.y + dj[k]) = 255;
-								labels.at<uchar>(q.x + di[k], q.y + dj[k]) = 1;
-								Q.push({ q.x + di[k], q.y + dj[k] });
-							}
-					}
-				}
-			}
-		}
-
-		for (int i = 0; i < src.rows; i++) {
-			for (int j = 0; j < src.cols; j++) {
-				if (module_cln.at<uchar>(i, j) == 128)
-					module_cln.at<uchar>(i, j) = 0;
-			}
-		}
-
-		imshow("edges", module_cln);
-		waitKey(0);
-	}
 }
 
 int main()
