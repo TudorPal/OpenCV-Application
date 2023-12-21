@@ -1571,8 +1571,8 @@ Mat dilate(Mat src)
 
 	Mat dst = src.clone();
 
-	for (int i = 0; i < height; i++) {
-		for (int j = 0; j < width; j++) {
+	for (int i = 1; i < height-1; i++) {
+		for (int j = 1; j < width-1; j++) {
 			if (src.at<uchar>(i, j) == 0) {
 				for (int k = 0; k < 8; k++) {
 					x = i + di[k];
@@ -1621,9 +1621,9 @@ Mat erode(Mat src)
 	int di[] = { 0,-1,-1,-1,0,1,1,1 };
 	int dj[] = { 1,1,0,-1,-1,-1,0,1 };
 
-	for (i = 0; i < height; i++)
+	for (i = 1; i < height-1; i++)
 	{
-		for (j = 0; j < width; j++)
+		for (j = 1; j < width-1; j++)
 		{
 			if (src.at<uchar>(i, j) == 0)
 			{
@@ -1781,9 +1781,9 @@ void contour() {
 	int di[] = { 0,-1,-1,-1,0,1,1,1 };
 	int dj[] = { 1,1,0,-1,-1,-1,0,1 };
 
-	for (i = 0; i < height; i++)
+	for (i = 1; i < height-1; i++)
 	{
-		for (j = 0; j < width; j++)
+		for (j = 1; j < width-1; j++)
 		{
 			if (src.at<uchar>(i, j) == 0)
 			{
@@ -2889,6 +2889,196 @@ void canny(){
 	waitKey();
 }
 
+Mat canny(Mat src) {
+	GaussianBlur(src, src, Size(3, 3), 0.5, 0.5);
+
+	Mat fx = Mat(src.rows, src.cols, CV_32SC1, Scalar(0));
+	Mat fy = Mat(src.rows, src.cols, CV_32SC1, Scalar(0));
+	Mat module = Mat(src.rows, src.cols, CV_8UC1, Scalar(0));
+	Mat direction = Mat(src.rows, src.cols, CV_32F, Scalar(0.0));
+
+	int filterx[3][3] = { -1, 0, 1,-2, 0, 2,-1, 0, 1 };
+	int filtery[3][3] = { 1, 2, 1, 0, 0, 0, -1,-2, -1 };
+
+	for (int i = 1; i < src.rows - 1; i++) {
+		for (int j = 1; j < src.cols - 1; j++) {
+			int pixelValx = 0;
+			int pixelValy = 0;
+
+			for (int u = 0; u < 3; u++) {
+				for (int v = 0; v < 3; v++) {
+					pixelValx += filterx[u][v] * src.at<uchar>(i + u - 1, j + v - 1);
+					pixelValy += filtery[u][v] * src.at<uchar>(i + u - 1, j + v - 1);
+
+				}
+			}
+			fx.at<int>(i, j) = pixelValx;
+			fy.at<int>(i, j) = pixelValy;
+
+		}
+	}
+
+	for (int i = 1; i < src.rows - 1; i++) {
+		for (int j = 1; j < src.cols - 1; j++) {
+			module.at<uchar>(i, j) = sqrt(pow(fx.at<int>(i, j), 2) + pow(fy.at<int>(i, j), 2)) / (4.0 * sqrt(2));
+			direction.at<float>(i, j) = (atan2(fy.at<int>(i, j), fx.at<int>(i, j)) + CV_PI);
+		}
+	}
+
+	Mat module_cln = module.clone();
+
+	float ls11 = CV_PI / 8;
+	float ld11 = 3 * CV_PI / 8;
+
+	float ls12 = 9 * CV_PI / 8;
+	float ld12 = 11 * CV_PI / 8;
+
+
+	float ls01 = 3 * CV_PI / 8;
+	float ld01 = 5 * CV_PI / 8;
+
+	float ls02 = 11 * CV_PI / 8;
+	float ld02 = 13 * CV_PI / 8;
+
+
+	float ls31 = 5 * CV_PI / 8;
+	float ld31 = 7 * CV_PI / 8;
+
+	float ls32 = 13 * CV_PI / 8;
+	float ld32 = 15 * CV_PI / 8;
+
+
+	float ls21 = 7 * CV_PI / 8;
+	float ld21 = 9 * CV_PI / 8;
+
+	float ls22 = 15 * CV_PI / 8;
+	float ld22 = 1 * CV_PI / 8;
+
+
+
+	for (int i = 1; i < src.rows - 1; i++) {
+		for (int j = 1; j < src.cols - 1; j++) {
+
+			if (((direction.at<float>(i, j) > ls11) && (direction.at<float>(i, j) <= ld11)) ||
+				((direction.at<float>(i, j) > ls12) && (direction.at<float>(i, j) <= ld12))) {
+
+				if (module_cln.at<uchar>(i - 1, j + 1) >= module_cln.at<uchar>(i, j) ||
+					module_cln.at<uchar>(i + 1, j - 1) >= module_cln.at<uchar>(i, j))
+					module_cln.at<uchar>(i, j) = 0;
+			}
+
+			if (((direction.at<float>(i, j) > ls01) && (direction.at<float>(i, j) <= ld01)) ||
+				((direction.at<float>(i, j) > ls02) && (direction.at<float>(i, j) <= ld02))) {
+
+				if (module_cln.at<uchar>(i - 1, j) >= module_cln.at<uchar>(i, j) ||
+					module_cln.at<uchar>(i + 1, j) >= module_cln.at<uchar>(i, j))
+					module_cln.at<uchar>(i, j) = 0;
+			}
+
+			if (((direction.at<float>(i, j) > ls31) && (direction.at<float>(i, j) <= ld31)) ||
+				((direction.at<float>(i, j) > ls32) && (direction.at<float>(i, j) <= ld32))) {
+
+				if (module_cln.at<uchar>(i - 1, j - 1) >= module_cln.at<uchar>(i, j) ||
+					module_cln.at<uchar>(i + 1, j + 1) >= module_cln.at<uchar>(i, j))
+					module_cln.at<uchar>(i, j) = 0;
+			}
+
+			if (((direction.at<float>(i, j) > ls21) && (direction.at<float>(i, j) <= ld21)) ||
+				((direction.at<float>(i, j) > ls22) && (direction.at<float>(i, j) <= ld22))) {
+
+				if (module_cln.at<uchar>(i, j - 1) >= module_cln.at<uchar>(i, j) ||
+					module_cln.at<uchar>(i, j + 1) >= module_cln.at<uchar>(i, j))
+					module_cln.at<uchar>(i, j) = 0;
+			}
+
+		}
+	}
+
+	int zeroGradientModulePixels = 0;
+	float p = 0.1;
+
+	for (int i = 1; i < module.rows - 1; i++) {
+		for (int j = 1; j < module.cols - 1; j++) {
+			if (module_cln.at<uchar>(i, j) == 0) {
+				zeroGradientModulePixels++;
+			}
+		}
+	}
+
+	int numberEdgePixels = p * ((module.rows - 2) * (module.cols - 2) - zeroGradientModulePixels);
+	int numberNonEdgePixels = (1 - p) * ((module.rows - 2) * (module.cols - 2) - zeroGradientModulePixels);
+
+	int histogram[256] = {};
+
+	for (int i = 1; i < module.rows - 1; i++) {
+		for (int j = 1; j < module.cols - 1; j++) {
+			histogram[module_cln.at<uchar>(i, j)]++;
+		}
+	}
+	int s = 0;
+	int index;
+	for (index = 1; index < 256; index++) {
+
+		s += histogram[index];
+		if (s > numberNonEdgePixels)
+			break;
+	}
+	int thHigh = index;
+
+	int thLow = 0.4 * thHigh;
+
+	for (int i = 0; i < module.rows; i++) {
+		for (int j = 0; j < module.cols; j++) {
+			int value = module_cln.at<uchar>(i, j);
+
+			if (value < thLow)
+				module_cln.at<uchar>(i, j) = 0;
+			else if (value > thHigh)
+				module_cln.at<uchar>(i, j) = 255;
+			else
+				module_cln.at<uchar>(i, j) = 128;
+		}
+	}
+
+	Mat	labels(src.rows, src.cols, CV_8UC1);
+	labels = Mat::zeros(src.rows, src.cols, CV_8UC1);
+
+	int di[8] = { -1,0,1,0,-1,1,-1,1 };
+	int dj[8] = { 0,-1,0,1,-1,1,1,-1 };
+
+	for (int i = 0; i < src.rows; i++) {
+		for (int j = 0; j < src.cols; j++) {
+			if ((module_cln.at<uchar>(i, j) == 255) && (labels.at<uchar>(i, j) == 0)) {
+				std::queue<Point> Q;
+				labels.at<uchar>(i, j) = 1;
+				Q.push({ i,j });
+				while (!Q.empty()) {
+					Point q = Q.front();
+					Q.pop();
+
+					for (int k = 0; k < 8; k++)
+						if ((module_cln.at<uchar>(q.x + di[k], q.y + dj[k]) == 128)
+							&& (labels.at<uchar>(q.x + di[k], q.y + dj[k]) == 0)) {
+							module_cln.at<uchar>(q.x + di[k], q.y + dj[k]) = 255;
+							labels.at<uchar>(q.x + di[k], q.y + dj[k]) = 1;
+							Q.push({ q.x + di[k], q.y + dj[k] });
+						}
+				}
+			}
+		}
+	}
+
+	for (int i = 0; i < src.rows; i++) {
+		for (int j = 0; j < src.cols; j++) {
+			if (module_cln.at<uchar>(i, j) == 128)
+				module_cln.at<uchar>(i, j) = 0;
+		}
+	}
+	return module_cln;
+
+}
+
+
 void calculateLeafProperties(const Mat& binaryImage, double& minArea, double& maxArea, double& minCircularity, double& maxCircularity, std::vector<std::vector<Point>> contours) {
 	minArea = (std::numeric_limits<double>::max)();
 	maxArea = 0;
@@ -3187,11 +3377,6 @@ void detectLeaves() {
 	}
 	treshold = x;
 	int pragAdaptiv = treshold;
-	std::cout << pragAdaptiv << std::endl;
-	std::cout << nrTotalPuncte << std::endl;
-	std::cout << nrPuncteZero << std::endl;
-	std::cout << nrNonMuchie << std::endl;
-	std::cout << sum << std::endl;
 
 	// Step 5: Extinderea muchiilor prin histereza
 	for (int i = 1; i < height - 1; i++) {
@@ -3238,10 +3423,11 @@ void detectLeaves() {
 	}
 	imshow("Canny", binarizare);
 	// Open the image to reduce the number of holes in the contour
-	Mat temp = erode(binarizare.clone());
+	/*Mat temp = binarizare.clone();
+	temp = erode(temp);
 	Mat opened = dilate(temp);
 	imshow("Open", opened);
-	binarizare = opened.clone();
+	binarizare = opened.clone();*/
 
 	// Step 6: Contour detection on the binary image & calculate leaf properties
 	std::vector<std::vector<cv::Point>> contours;
@@ -3298,6 +3484,1100 @@ void detectLeaves() {
 	cv::waitKey();
 }
 
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+// 1.  Citiţi datele de intrare din fişierele ataşate. Prima linie conţine numărul de puncte. Liniile următoare conţin perechi (x,y).
+
+void citireDate() {
+	char fname[MAX_PATH];
+	openFileDlg(fname);
+	FILE* f = fopen(fname, "r");
+	int n;
+	fscanf(f, "%d", &n);
+	/*printf("Numarul de puncte este: %d\n", n);*/
+	std::vector<Point> points;
+	float x, y;
+	for (int i = 0; i < n; i++) {
+		if (fscanf(f, "%f %f", &x, &y) != 2) {
+			fprintf(stderr, "Error reading point at line %d\n", i + 2);
+		}
+		points.push_back(Point(x, y));
+	}
+
+	/*for (int i = 0; i < n; i++) {
+		printf("%d %d\n", points[i].x, points[i].y);
+	}*/
+	fclose(f);
+	Mat img = Mat(500, 500, CV_8UC3, Scalar(255, 255, 255));
+	for (const Point& point : points) {
+		circle(img, point, 2, Scalar(0, 0, 0), -1);
+	}
+	imshow("Puncte", img);
+	waitKey();
+}
+
+std::vector<Point> getPoints(FILE* f) {
+	int n;
+	fscanf(f, "%d", &n);
+	std::vector<Point> points;
+	float x, y;
+	for (int i = 0; i < n; i++) {
+		if (fscanf(f, "%f %f", &x, &y) != 2) {
+			fprintf(stderr, "Error reading point at line %d\n", i + 2);
+		}
+		points.push_back(Point(x, y));
+	}
+	fclose(f);
+	return points;
+}
+
+// Model 1 – Model liniar cu pantă și termen liber
+
+void model1() {
+	char fname[MAX_PATH];
+	openFileDlg(fname);
+	FILE* f = fopen(fname, "r");
+	std::vector<Point> points = getPoints(f);
+	int n = points.size();
+	// f(x)=t0 + t1*x
+	// t0 = (sum(y) - t1*sum(x)) / n
+	// t1 = (sum(x*y) - sum(x)*sum(y)) / (n*sum(x^2) - sum(x)^2)
+	float sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+	for (const Point& point : points) {
+		sumX += point.x;
+		sumY += point.y;
+		sumXY += point.x * point.y;
+		sumX2 += point.x * point.x;
+	}
+	float t1 = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+	float t0 = (sumY - t1 * sumX) / n;
+	printf("t0=%f\n", t0);
+	printf("t1=%f\n", t1);
+	Mat src = Mat(500, 500, CV_8UC3, Scalar(255, 255, 255));
+	for (int i = 0; i < 500; i++) {
+		int y = t0 + t1 * i;
+		circle(src, Point(i, y), 2, Scalar(247, 173, 35), -1);
+	}
+	for (const Point& point : points) {
+		circle(src, point, 1, Scalar(5, 58, 235), -1);
+	}
+	imshow("Dreapta", src);
+	waitKey();
+}
+
+// Model 2 - Forma liniara a dreptei
+
+void model2() {
+	char fname[MAX_PATH];
+	openFileDlg(fname);
+	FILE* f = fopen(fname, "r");
+	std::vector<Point> points = getPoints(f);
+	int n = points.size();
+	// xcos(beta) + ysin(beta) = ro
+	// beta = -1/2 * arctg(2*sum(x*y) - (float)(2/n)*sum(x)*sum(y) , sum(y^2 - x^2) + (float)(1/n)sum(x^2) - (float)(1/n)sum(y^2))
+	// ro = (float)(1/n)sum(x*cos(beta) + y*sin(beta))
+	float sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;
+	for (const Point& point : points) {
+		sumX += point.x;
+		sumY += point.y;
+		sumXY += point.x * point.y;
+		sumX2 += point.x * point.x;
+		sumY2 += point.y * point.y;
+	}
+	float beta = -0.5 * atan2(2 * sumXY - (float)(static_cast<float>(2) / n) * sumX * sumY , (sumY2 - sumX2) + (float)(static_cast<float>(1) / n) * sumX2 - (float)(static_cast<float>(1) / n) * sumY2);
+	float ro = (float)(static_cast<float>(1) / n) * (sumX * cos(beta) + sumY * sin(beta));
+	printf("beta=%f\n", beta);
+	printf("ro=%f\n", ro);
+	Mat src = Mat(500, 500, CV_8UC3, Scalar(255, 255, 255));
+	for (int i = 0; i < 500; i++) {
+		int y = (ro - i * cos(beta)) / sin(beta);
+		circle(src, Point(i, y), 2, Scalar(247, 173, 35), -1);
+	}
+	for (const Point& point : points) {
+		circle(src, point, 1, Scalar(5, 58, 235), -1);
+	}
+	imshow("Dreapta", src);
+	waitKey();
+}
+
+// 1.  Construiţi lista de puncte prin găsirea tuturor punctelor negre din imaginea de intrare.
+
+std::vector<Point> getBlackPoints(Mat src){
+	int height = src.rows;
+	int width = src.cols;
+	std::vector<Point> points;
+	for (int i = 0; i < height; i++) {
+		for (int j = 0; j < width; j++){
+			if (src.at<uchar>(i, j) == 0) {
+				points.push_back(Point(j, i));
+			}
+		}
+	}
+	return points;
+}
+
+void ransac(){
+	char fname[MAX_PATH];
+	openFileDlg(fname);
+	Mat src = imread(fname, IMREAD_GRAYSCALE);
+	imshow("Original", src);
+	std::vector<Point> points = getBlackPoints(src);
+	// print the points
+	for (const Point& point : points) {
+		printf("%d %d\n", point.x, point.y);
+	}
+	// 2. Calculaţi parametrii necesari N şi T pornind de la valorile t=10, p=0.99, q=0.8, s=2
+	int n = points.size();
+	printf("The number of points (n) = %d\n", n);
+	float t = 10;
+	float p = 0.99;
+	float q = 0.8;
+	int s = 2;
+	int N = ceil(log(1 - p) / log(1 - pow(q, s)));
+	int T = ceil(q*n);
+	printf("Maximum number of iterations (N)=%d\n", N);
+	printf("The number of inliers (T)=%d\n", T);
+
+	std::random_device rd;
+	std::default_random_engine gen(rd()); std::uniform_int_distribution<int> distribution(0, n - 1);
+
+	float a,b,c;
+	for(int i = 0; i < N; i++){
+		Point p1 = points[distribution(gen)];
+		Point p2 = points[distribution(gen)];
+		while (p1 == p2)
+		{
+			p2 = points[distribution(gen)];
+		}
+		a = p1.y - p2.y;
+		b = p2.x - p1.x;
+		c = p1.x * p2.y - p2.x * p1.y;
+		int nrInliers = 0;
+		for (const Point& point : points) {
+			float dist = abs(a * point.x + b * point.y + c) / sqrt(a * a + b * b);
+			if (dist < t) {
+				nrInliers++;
+			}
+		}
+		if (nrInliers > T) {
+			T = nrInliers;
+			printf("a=%f\n", a);
+			printf("b=%f\n", b);
+			printf("c=%f\n", c);
+			break;
+		}
+	}
+
+	Mat dst = Mat(500, 500, CV_8UC3, Scalar(255,255,255));
+	// int y1 = floor((-c - a * -1) / b);
+	// int y2 = floor((-c - a * src.cols + 1) / b);
+	// Point p0 = Point(- 1, y1);
+	// Point p1 = Point(src.cols + 1, y2);
+	// line(dst, p0, p1, Scalar(0), 2);
+	for (int i = 0; i < src.cols; i++) {
+		int y = floor((-c - a * i) / b); // y = (-c - a * x) / b
+		Point p0 = Point(i, y);
+		circle(dst, Point(i, y), 2, Scalar(0,0,0), -1);
+	}
+	for (const Point& point : points) {
+		circle(dst, point, 1, Scalar(5, 58, 235), -1);
+	}
+	imshow("Dreapta", dst);
+	waitKey();
+}
+
+struct peak{ int theta, ro, hval; 
+	bool operator < (const peak& o) const {
+	return hval > o.hval; } 
+};
+
+Mat getCanny(Mat src) {
+	Mat dst, gauss;
+	double k = 0.4;
+	int pH = 50;
+	int pL = (int)k * pH;
+	GaussianBlur(src, gauss, Size(5, 5), 0.8, 0.8);
+	Canny(gauss, dst, pL, pH, 3);
+
+	return dst;
+}
+
+void houghTransform(int option, int threshold){
+	char fname[MAX_PATH];
+	openFileDlg(fname);
+	Mat src = imread(fname, IMREAD_GRAYSCALE);
+	/*imshow("Original", srcGray);
+	Mat src = getCanny(srcGray);*/
+	imshow("Binarizare", src);
+	int height = src.rows;
+	int width = src.cols;
+	int dmax = sqrt(height * height + width * width) + 1;
+
+	Mat hough(dmax, 360, CV_32SC1, Scalar(0));
+	hough.setTo(0);
+	int maxHough = 0;
+	for (int i = 0; i < height; i++) {
+		for (int j = 0; j < width; j++){
+			if (src.at<uchar>(i, j) == 255) {
+				for (int theta = 0; theta < 360; theta++) {
+					float thetaRad = theta * CV_PI / 180;
+					int ro = j * cos(thetaRad) + i * sin(thetaRad);
+					if (ro >= 0 && ro <= dmax) {
+						hough.at<int>(ro, theta)++;
+						if (hough.at<int>(ro, theta) > maxHough) {
+							maxHough = hough.at<int>(ro, theta);
+						}
+					}
+				}
+			}
+		}
+	}
+	Mat houghImg;
+	hough.convertTo(houghImg, CV_8UC1, 255.f/maxHough);
+	imshow("Hough", houghImg);
+
+	std::vector<peak> peaks;
+	int n;
+	switch (option)
+	{
+		case 1: n = 3; break;
+		case 2: n = 5; break;
+		case 3: n = 7; break;
+		default: n = 3; break;
+	}
+	for (int i = 0; i < dmax; i++) {
+		for (int j = 0; j < 360; j++) {
+			bool isLocalMax = true;
+			for (int k = -n/2; k <= n/2; k++) {
+				for (int l = -n/2; l <= n/2; l++) {
+					if (i + k >= 0 && i + k < dmax && j + l >= 0 && j + l < 360) {
+						if (hough.at<int>(i + k, j + l) > hough.at<int>(i, j)) {
+							isLocalMax = false;
+						}
+					}
+				}
+			}
+			if (isLocalMax && hough.at<int>(i, j) > threshold) {
+				peak p;
+				p.theta = j;
+				p.ro = i;
+				p.hval = hough.at<int>(i, j);
+				peaks.push_back(p);
+			}
+		}
+	}
+	sort(peaks.begin(), peaks.end());
+	// keep the top 10 values from peaks
+	std::vector<peak> topPeaks;
+	for (int i = 0; i < 10; i++) {
+		printf("ro: %d, theta: %d\n", peaks[i].ro, peaks[i].theta);
+		topPeaks.push_back(peaks[i]);
+	}
+	
+	Mat dst = src.clone();
+	// convert dst to color
+	cvtColor(dst, dst, COLOR_GRAY2BGR);
+
+	for(const peak& p :topPeaks){
+		int x1 = 0;
+		int x2 = src.cols-1;
+		int y1 = (p.ro - x1 * cos(p.theta * CV_PI / 180)) / sin(p.theta * CV_PI / 180);
+		int y2 = (p.ro - x2 * cos(p.theta * CV_PI / 180)) / sin(p.theta * CV_PI / 180);
+		Point p0 = Point(x1, y1);
+		Point p1 = Point(x2, y2);
+		line(dst, p0, p1, Scalar(255, 0, 0), 2);
+	}
+	// for (const peak& p : topPeaks) {
+	// 	float thetaRad = p.theta * CV_PI / 180;
+	// 	for (int i = 0; i < src.cols; i++) {
+	// 		int y = (p.ro - i * cos(thetaRad)) / sin(thetaRad); // y = (-c - a * x) / b
+	// 		Point p0 = Point(i, y);
+	// 		circle(dst, Point(i, y), 2, Scalar(0,0,0), -1);
+	// 	}
+	// }
+	imshow("Dreapta", dst);
+	waitKey();
+}
+
+void chaferDistanceTransform(){
+	char fname[MAX_PATH];
+	openFileDlg(fname);
+	Mat src = imread(fname, IMREAD_GRAYSCALE);
+	imshow("Original", src);
+	int height = src.rows;
+	int width = src.cols;
+	Mat dt = src.clone();
+	int di[9] = {-1,-1,-1,0,0,0,1,1,1};
+	int dj[9] = {-1,0,1,-1,0,1,-1,0,1};
+	int weight[9] = {3,2,3,2,0,2,3,2,3};
+
+	for(int i = 1; i < height-1; i++){
+		for(int j = 1; j < width-1; j++){
+			int minima = (int)1e9;
+			for(int k = 0; k <= 4; k++){
+				int val = dt.at<uchar>(i+di[k], j+dj[k]) + weight[k];
+				if(val > 255){
+					val = 255;
+				}
+				/*if(val < dt.at<uchar>(i,j)){
+					dt.at<uchar>(i,j) = val;
+				}*/
+				if(val < minima)
+					minima = val;
+			}
+			dt.at<uchar>(i, j) = minima;
+		}
+	}
+	for(int i = height-2; i >= 1; i--){
+		for(int j = width-2; j >= 1; j--){
+			int minima = (int)1e9;
+			for(int k = 4; k < 9; k++){
+				int val = dt.at<uchar>(i+di[k], j+dj[k]) + weight[k];
+				if(val > 255){
+					val = 255;
+				}
+				/*if(val < dt.at<uchar>(i,j)){
+					dt.at<uchar>(i,j) = val;
+				}*/
+				if (val < minima)
+					minima = val;
+			}
+			dt.at<uchar>(i, j) = minima;
+		}
+	}
+	imshow("Chafer", dt);
+	waitKey();
+}
+
+Mat getChaferTransform(Mat src, int di[9], int dj[9], int weight[9]){
+	int height = src.rows;
+	int width = src.cols;
+	Mat dt = src.clone();
+
+	for(int i = 1; i < height-1; i++){
+		for(int j = 1; j < width-1; j++){
+			int minima = (int)1e9;
+			for(int k = 0; k <= 4; k++){
+				int val = dt.at<uchar>(i+di[k], j+dj[k]) + weight[k];
+				if(val > 255){
+					val = 255;
+				}
+				/*if(val < dt.at<uchar>(i,j)){
+					dt.at<uchar>(i,j) = val;
+				}*/
+				if(val < minima)
+					minima = val;
+			}
+			dt.at<uchar>(i, j) = minima;
+		}
+	}
+	for(int i = height-2; i >= 1; i--){
+		for(int j = width-2; j >= 1; j--){
+			int minima = (int)1e9;
+			for(int k = 4; k < 9; k++){
+				int val = dt.at<uchar>(i+di[k], j+dj[k]) + weight[k];
+				if(val > 255){
+					val = 255;
+				}
+				/*if(val < dt.at<uchar>(i,j)){
+					dt.at<uchar>(i,j) = val;
+				}*/
+				if (val < minima)
+					minima = val;
+			}
+			dt.at<uchar>(i, j) = minima;
+		}
+	}
+	return dt;
+}
+
+void similarCost(){
+	char fname[MAX_PATH];
+	openFileDlg(fname);
+	Mat src1 = imread(fname, IMREAD_GRAYSCALE);
+	imshow("Template", src1);
+	char fname2[MAX_PATH];
+	openFileDlg(fname2);
+	Mat src2 = imread(fname2, IMREAD_GRAYSCALE);
+	imshow("Unknown Object", src2);
+	int height = src1.rows;
+	int width = src1.cols;
+
+	int di[9] = {-1,-1,-1,0,0,0,1,1,1};
+	int dj[9] = {-1,0,1,-1,0,1,-1,0,1};
+	int weight[9] = {3,2,3,2,0,2,3,2,3};
+	Mat dt = getChaferTransform(src1, di, dj, weight);
+	imshow("Chafer", dt);
+
+	int sum = 0;
+	int nr = 0;
+	for(int i = 0; i < height; i++){
+		for(int j = 0; j < width; j++){
+			if(src2.at<uchar>(i,j) == 0){
+				sum += dt.at<uchar>(i,j);
+				nr++;
+			}
+		}
+	}
+	printf("Similarity cost: %f\n", (float)sum/nr);
+
+	// calcularea centrului de masa al template-ului folosind: centrul de masa = media coordonatelor pixelilor negri
+	int sumX = 0, sumY = 0, nrPoints = 0;
+	for(int i = 0; i < height; i++){
+		for(int j = 0; j < width; j++){
+			if(src1.at<uchar>(i,j) == 0){
+				sumX += i;
+				sumY += j;
+				nrPoints++;
+			}
+		}
+	}
+	int x = sumX / nrPoints;
+	int y = sumY / nrPoints;
+	printf("Centrul de masa al template-ului: (%d, %d)\n", x, y);
+
+	// translatarea obiectului necunoscut la centrul de masa al template-ului
+	int dx = height/2 - x;
+	int dy = width/2 - y;
+	Mat dst = Mat(height, width, CV_8UC1, Scalar(255));
+	for(int i = 0; i < height; i++){
+		for(int j = 0; j < width; j++){
+			if(i + dx >= 0 && i + dx < height && j + dy >= 0 && j + dy < width){
+				dst.at<uchar>(i + dx, j + dy) = src2.at<uchar>(i,j);
+			}
+		}
+	}
+	imshow("Translated", dst);
+	waitKey();
+}
+
+void patternMatching(){
+	char fname[MAX_PATH];
+	openFileDlg(fname);
+	Mat src1 = imread(fname, IMREAD_GRAYSCALE);
+	imshow("Template", src1);
+	char fname2[MAX_PATH];
+	openFileDlg(fname2);
+	Mat obj = imread(fname2, IMREAD_GRAYSCALE);
+	imshow("Unknown Object", obj);
+	int height = src1.rows;
+	int width = src1.cols;
+
+	// calcularea centrului de masa al template-ului folosind: centrul de masa = media coordonatelor pixelilor negri
+	int sumX = 0, sumY = 0, nrPoints = 0;
+	for(int i = 0; i < height; i++){
+		for(int j = 0; j < width; j++){
+			if(src1.at<uchar>(i,j) == 0){
+				sumX += i;
+				sumY += j;
+				nrPoints++;
+			}
+		}
+	}
+	int x = sumX / nrPoints;
+	int y = sumY / nrPoints;
+	printf("Centrul de masa al template-ului: (%d, %d)\n", x, y);
+
+	// translatarea obiectului necunoscut la centrul de masa al template-ului
+	int dx = height/2 - x;
+	int dy = width/2 - y;
+	Mat src2 = Mat(height, width, CV_8UC1, Scalar(255));
+	for(int i = 0; i < height; i++){
+		for(int j = 0; j < width; j++){
+			if(i + dx >= 0 && i + dx < height && j + dy >= 0 && j + dy < width){
+				src2.at<uchar>(i + dx, j + dy) = obj.at<uchar>(i,j);
+			}
+		}
+	}
+	imshow("Translated", src2);
+
+	int di[9] = {-1,-1,-1,0,0,0,1,1,1};
+	int dj[9] = {-1,0,1,-1,0,1,-1,0,1};
+	int weight[9] = {3,2,3,2,0,2,3,2,3};
+	Mat dt = getChaferTransform(src1, di, dj, weight);
+	imshow("Chafer", dt);
+
+	int sum = 0;
+	int nr = 0;
+	for(int i = 0; i < height; i++){
+		for(int j = 0; j < width; j++){
+			if(src2.at<uchar>(i,j) == 0){
+				sum += dt.at<uchar>(i,j);
+				nr++;
+			}
+		}
+	}
+	printf("Similarity cost: %f\n", (float)sum/nr);
+	waitKey();
+}
+
+
+void loadImages(){
+	char folder[256] = "D:\\facultate\\An4sem1\\SRF\\L5\\faces";
+	char fname[256];
+
+	// 1. imaginile sunt de 19x19 pixeli
+	int n = 19 * 19;
+	int m = 400;
+	Mat I = Mat(m, n, CV_32FC1, Scalar(0));
+	for(int i = 1; i <= m; i++){
+		sprintf(fname, "%s/face%05d.bmp", folder, i);
+		Mat img = imread(fname, IMREAD_GRAYSCALE);
+		for(int j = 0; j < n; j++){
+			I.at<float>(i-1, j) = img.at<uchar>(j/19, j%19);
+		}
+	}
+	
+	// 2. calcularea vectorului cu valorile medii
+	Mat mean = Mat(1, n, CV_32FC1, Scalar(0));
+	for(int i = 0; i < n; i++){
+		float sum = 0;
+		for(int j = 0; j < m; j++){
+			sum += I.at<float>(j, i);
+		}
+		mean.at<float>(0, i) = sum / m;
+	}
+
+	FILE* f = fopen("D:\\facultate\\An4sem1\\SRF\\L5\\mean.csv", "w");
+	for(int i = 0; i < n; i++){
+		fprintf(f, "%f,", mean.at<float>(0, i));
+	}
+
+	// 3. calcularea matricei de covarianta
+	Mat cov = Mat(n, n, CV_32FC1, Scalar(0));
+	for(int i = 0; i < n; i++){
+		for(int j = 0; j < n; j++){
+			float sum = 0;
+			for(int k = 0; k < m; k++){
+				sum += (I.at<float>(k, i) - mean.at<float>(0, i)) * (I.at<float>(k, j) - mean.at<float>(0, j));
+			}
+			cov.at<float>(i, j) = sum / (m - 1);
+		}
+	}
+
+	f = fopen("D:\\facultate\\An4sem1\\SRF\\L5\\cov.csv", "w");
+	for(int i = 0; i < n; i++){
+		for(int j = 0; j < n; j++){
+			fprintf(f, "%f,", cov.at<float>(i, j));
+		}
+		fprintf(f, "\n");
+	}
+
+	// 4. calcularea deviatiei standard
+	Mat stdDev = Mat(1, n, CV_32FC1, Scalar(0));
+	for(int i = 0; i < n; i++){
+		stdDev.at<float>(0, i) = sqrt(cov.at<float>(i, i));
+	}
+	// calcularea matricei de corelatie (cor = cov / (stdDev(i) * stdDev(j)))
+	Mat cor = Mat(n, n, CV_32FC1, Scalar(0));
+	for(int i = 0; i < n; i++){
+		for(int j = 0; j < n; j++){
+			cor.at<float>(i, j) = cov.at<float>(i, j) / (stdDev.at<float>(0, i) * stdDev.at<float>(0, j));
+		}
+	}
+	// scrierea matricei de corelatie intr-un fisier CSV
+	f = fopen("D:\\facultate\\An4sem1\\SRF\\L5\\cor.csv", "w");
+	for(int i = 0; i < n; i++){
+		for(int j = 0; j < n; j++){
+			fprintf(f, "%f,", cor.at<float>(i, j));
+		}
+		fprintf(f, "\n");
+	}
+
+	int i = 0;
+	int j = 0;
+	int x1 = 5; int y1 = 4;
+	int x2 = 5; int y2 = 14;
+	Mat chart = Mat(256, 256, CV_8UC1, Scalar(255));
+	i = x1 * 19 + y1;
+	j = x2 * 19 + y2;
+
+	for(int k = 0; k < 256; k++){
+		chart.at<uchar>((int)I.at<float>(k, i), (int)I.at<float>(k, j)) = 0;
+	}
+	// print the correlation coefficient
+	printf("1. Correlation coefficient at (%d, %d): %f\n", i, j, cor.at<float>(i, j));
+	imshow("Chart1", chart);
+
+	x1 = 10; y1 = 13;
+	x2 = 9; y2 = 15;
+	Mat chart2 = Mat(256, 256, CV_8UC1, Scalar(255));
+	i = x1 * 19 + y1;
+	j = x2 * 19 + y2;
+
+	for (int k = 0; k < 256; k++) {
+		chart2.at<uchar>((int)I.at<float>(k, i), (int)I.at<float>(k, j)) = 0;
+	}
+	// print the correlation coefficient
+	printf("2. Correlation coefficient at (%d, %d): %f\n", i, j, cor.at<float>(i, j));
+	imshow("Chart2", chart2);
+
+	waitKey();
+}
+
+void principalComponents(){
+	/*1.*/
+	char fname[MAX_PATH];
+	openFileDlg(fname);
+	FILE* f = fopen(fname, "r");
+	int n, d;
+	fscanf(f, "%d %d", &n, &d);
+	Mat X(n, d, CV_64FC1, Scalar(0));
+	for(int i = 0; i < n; i++){
+		for(int j = 0; j < d; j++){
+			fscanf(f, "%lf", &X.at<double>(i, j));
+		}
+	}
+	fclose(f);
+
+	/*2*/
+	Mat mean = Mat(1, d, CV_64FC1, Scalar(0));
+	for(int i = 0; i < d; i++){
+		double sum = 0;
+		for(int j = 0; j < n; j++){
+			sum += X.at<double>(j, i);
+		}
+		mean.at<double>(0, i) = sum / n;
+	}
+
+	// substract it from the data points
+	for(int i = 0; i < n; i++){
+		for(int j = 0; j < d; j++){
+			X.at<double>(i, j) -= mean.at<double>(0, j);
+		}
+	}
+
+	/*3*/
+	Mat cov = Mat(d, d, CV_64FC1, Scalar(0));
+	cov = (X.t() * X) / (n - 1);
+
+	/*4 si 5*/
+	Mat eigenvalues, eigenvectors;
+	eigen(cov, eigenvalues, eigenvectors);
+	eigenvectors = eigenvectors.t();
+
+	printf("First eigenvalue is: ");
+	printf("%f\n", eigenvalues.at<double>(0, 0));
+
+	/*6.*/
+	int k = 2;
+	Mat Qk = Mat(d, k, CV_64FC1, Scalar(0));
+	for(int i = 0; i < d; i++){
+		for(int j = 0; j < k; j++){
+			Qk.at<double>(i, j) = eigenvectors.at<double>(i, j);
+		}
+	}
+	Mat Xcoeff = X * Qk;
+	Mat Xk = X * Qk * Qk.t();
+
+	/*7.*/
+	double sum = 0;
+
+	for(int i = 0; i < n; i++){
+		for(int j = 0; j < d; j++){
+			sum += abs(X.at<double>(i, j) - Xk.at<double>(i, j));
+		}
+	}
+	printf("Mean absolute difference: %f\n", sum / (n * d));
+
+	/*8. Find the minimum and maximum along the columns of the coefficient 
+	matrix Xcoeff. [1p]*/
+	double min = 1e9;
+	double max = -1e9;
+	for(int i = 0; i < n; i++){
+		for(int j = 0; j < k; j++){
+			if(Xcoeff.at<double>(i, j) < min){
+				min = Xcoeff.at<double>(i, j);
+			}
+			if(Xcoeff.at<double>(i, j) > max){
+				max = Xcoeff.at<double>(i, j);
+			}
+		}
+	}
+	printf("Min: %f\n", min);
+	printf("Max: %f\n", max);
+
+	/*9.*/
+	Mat x = Mat(n, 1, CV_64FC1, Scalar(0));
+	Mat y = Mat(n, 1, CV_64FC1, Scalar(0));
+	
+	for(int i = 0; i < n; i++){
+		x.at<double>(i, 0) = Xcoeff.at<double>(i, 0) - min;
+		y.at<double>(i, 0) = Xcoeff.at<double>(i, 1) - min;
+	}
+
+	int size = max - min + 1;
+	Mat img = Mat(size, size, CV_8UC1, Scalar(255));
+	for(int i = 0; i < n; i++){
+		img.at<uchar>((int)x.at<double>(i, 0), (int)y.at<double>(i, 0)) = 0;
+	}
+
+	imshow("Points 1", img);
+
+	/*10.*/
+	k = 3;
+	Qk = Mat(d, k, CV_64FC1, Scalar(0));
+	for(int i = 0; i < d; i++){
+		for(int j = 0; j < k; j++){
+			Qk.at<double>(i, j) = eigenvectors.at<double>(i, j);
+		}
+	}
+	Xcoeff = X * Qk;
+	Xk = X * Qk * Qk.t();
+
+	min = 1e9;
+	max = -1e9;
+	for(int i = 0; i < n; i++){
+		for(int j = 0; j < k; j++){
+			if(Xcoeff.at<double>(i, j) < min){
+				min = Xcoeff.at<double>(i, j);
+			}
+			if(Xcoeff.at<double>(i, j) > max){
+				max = Xcoeff.at<double>(i, j);
+			}
+		}
+	}
+	printf("Min: %f\n", min);
+	printf("Max: %f\n", max);
+
+	size = max - min + 1;
+	img = Mat(size, size, CV_8UC1, Scalar(255));
+
+	x = Mat(n, 1, CV_64FC1, Scalar(0));
+	y = Mat(n, 1, CV_64FC1, Scalar(0));
+	Mat z = Mat(n, 1, CV_64FC1, Scalar(0));
+
+	for(int i = 0; i < n; i++){
+		x.at<double>(i, 0) = Xcoeff.at<double>(i, 0) - min;
+		y.at<double>(i, 0) = Xcoeff.at<double>(i, 1) - min;
+		z.at<double>(i, 0) = Xcoeff.at<double>(i, 2) - min;
+	}
+
+	// normalize z in the 0-255 interval
+	min = 1e9;
+	max = -1e9;
+	for(int i = 0; i < n; i++){
+		if(z.at<double>(i, 0) < min){
+			min = z.at<double>(i, 0);
+		}
+		if(z.at<double>(i, 0) > max){
+			max = z.at<double>(i, 0);
+		}
+	}
+	for(int i = 0; i < n; i++){
+		z.at<double>(i, 0) = (z.at<double>(i, 0) - min) * 255 / (max - min);
+	}
+
+	for(int i = 0; i < n; i++){
+		img.at<uchar>((int)x.at<double>(i, 0), (int)y.at<double>(i, 0)) = z.at<double>(i, 0);
+	}
+	
+	imshow("Points 2", img);
+
+	/*11.*/
+	// sum of eigenvalues on k / sum of eigenvalues on d
+	double sumK = 0;
+	double sumD = 0;
+	for(int i = 0; i < k; i++){
+		sumK += eigenvalues.at<double>(i, 0);
+	}
+	for(int i = 0; i < d; i++){
+		sumD += eigenvalues.at<double>(i, 0);
+	}
+	printf("Percentage of variance retained: %f\n", sumK / sumD);
+
+	// find k for which the kth approximate retains 99% of the original variance
+	k = 0;
+	sumK = 0;
+	sumD = 0;
+	while(sumK / sumD >= 0.99){
+		sumK += eigenvalues.at<double>(k, 0);
+		sumD += eigenvalues.at<double>(k, 0);
+		k++;
+	}
+	printf("k for which the kth approximate retains 99%% of the original variance: %d\n", k);
+
+	waitKey();
+}
+
+std::vector<float> getColorHist(Mat& image, int m) {
+	std::vector<Mat> channels;
+	split(image, channels);
+
+	std::vector<float> histogram;
+
+	for (const auto& channel : channels) {
+		float D = 256.0f / m;
+		std::vector<int> hist(m, 0);
+
+		for (int i = 0; i < channel.rows; ++i) {
+			for (int j = 0; j < channel.cols; ++j) {
+				int pixel = (int)(channel.at<uchar>(i, j));
+				int binIndex = (int)(pixel / D);
+				hist[binIndex]++;
+			}
+		}
+
+		// Concatenate histograms for each channel
+		histogram.insert(histogram.end(), hist.begin(), hist.end());
+	}
+
+	return histogram;
+}
+
+void colorHistogram(){
+	char fname[MAX_PATH];
+	openFileDlg(fname);
+	Mat src = imread(fname, IMREAD_COLOR);
+	imshow("Original", src);
+	int height = src.rows;
+	int width = src.cols;
+
+	int m = 4;
+	std::vector<float> histogram = getColorHist(src, m);
+	// print histogram
+	imshow("hist", histogram);
+	waitKey();
+
+}
+
+void knnClassifier(){
+	char fname[256];
+	const int nrclasses = 6;
+	char classes[nrclasses][10] = {"beach", "city", "desert", "forest", "landscape", "snow"};
+
+	// Allocate the feature matrix X and the label vector Y
+	// Mat X(nrinst, feature_dim, CV_32FC1)
+	// Mat Y(nrinst, 1, CV_8UC1)
+	int m = 4;
+	int nrinst = 672;
+	int feature_dim = m*3;
+	Mat X(nrinst, feature_dim, CV_32FC1, Scalar(0));
+	Mat Y(nrinst, 1, CV_8UC1, Scalar(0));
+
+	int rowX = 0;
+	for (int cls = 0; cls < nrclasses; cls++) {
+		for (int fileNr = 0; ; fileNr++) {
+			sprintf(fname, "D:/facultate/An4sem1/SRF/L8/images/train/%s/%06d.jpeg", classes[cls], fileNr);
+			Mat img = imread(fname);
+			if (img.cols == 0) {
+				break;
+			}
+
+			std::vector<float> histogram = getColorHist(img, m);
+
+			for (int d = 0; d < feature_dim; d++) {
+				X.at<float>(rowX, d) = histogram[d];
+			}
+			Y.at<uchar>(rowX) = cls;
+			rowX++;
+		}
+	}
+
+	// print all values from y
+	for(int i = 0; i < nrinst; i++){
+		printf("%d ", Y.at<uchar>(i, 0));
+	}
+	printf("\n");
+	// print y size
+	printf("%d %d\n", Y.rows, Y.cols);
+	imshow("hist", X);
+
+	// Allocate the confusion matrix
+	Mat C(nrclasses, nrclasses, CV_32SC1, Scalar(0));
+
+	// Allocate the feature matrix Xtest and the label vector Ytest
+	int nrtest = 85;
+	Mat Xtest(nrtest, feature_dim, CV_32FC1, Scalar(0));
+	Mat Ytest(nrtest, 1, CV_8UC1, Scalar(0));
+
+	// we select the first 5 distances
+	int k = 10;
+	printf("\n\nVOTES:\n\n");
+	rowX = 0;
+	for (int cls = 0; cls < nrclasses; cls++) {
+		for (int fileNr = 0; ; fileNr++) {
+			sprintf(fname, "D:/facultate/An4sem1/SRF/L8/images/test/%s/%06d.jpeg", classes[cls], fileNr);
+			Mat img = imread(fname);
+			if (img.cols == 0) {
+				break;
+			}
+
+			std::vector<float> histogram = getColorHist(img, m);
+
+			for (int d = 0; d < feature_dim; d++) {
+				Xtest.at<float>(rowX, d) = histogram[d];
+			}
+			Ytest.at<uchar>(rowX) = cls;
+			rowX++;
+
+			// Compute the distance from the test image to all training images
+			std::vector<std::pair<float, int>> distances(nrinst);
+			for (int i = 0; i < nrinst; i++) {
+				float dist = 0;
+				for (int d = 0; d < feature_dim; d++) {
+					dist += (histogram[d] - X.at<float>(i, d)) * (histogram[d] - X.at<float>(i, d));
+				}
+				distances[i] = std::make_pair(dist, i);
+				//printf("%d, ", Y.at<uchar>(distances[i].second));
+			}
+			//printf("test image number %d with distance: %f", fileNr, distances[fileNr].first);
+
+			// Sort the distances based on the first stored value
+			std::sort(distances.begin(), distances.end());
+			// print the distances vector
+			/*for(int i = 0; i < nrinst; i++){
+				printf("%f, %d\n", distances[i].first, Y.at<uchar>(distances[i].second));
+			}*/
+			// for each test image select the first k distances and compute the class with the most votes
+			int votes[nrclasses] = {0};
+			for (int i = 0; i < k; i++) {
+				int cls = Y.at<uchar>(distances[i].second);
+				votes[cls]++;
+				printf("%d, ", cls);
+			}
+			int maxVotes = 0;
+			int maxVotesClass = 0;
+			for (int i = 0; i < nrclasses; i++) {
+				if (votes[i] > maxVotes) {
+					maxVotes = votes[i];
+					maxVotesClass = i;
+				}
+			}
+			// for each test image we print the class with the most votes
+			// printf("%d ", maxVotesClass);
+			C.at<int>(cls, maxVotesClass)++;
+
+			printf("Real class: %d, Predicted class: %d, with %d votes\n", cls, maxVotesClass, maxVotes);
+		}
+	}
+
+	// evaluate the classifier on the test set
+	int correct = 0;
+	for (int i = 0; i < nrtest; i++) {
+		int cls = Ytest.at<uchar>(i);
+		int clsPredicted = 0;
+		int maxVotes = 0;
+		for (int j = 0; j < nrclasses; j++) {
+			if (C.at<int>(cls, j) > maxVotes) {
+				maxVotes = C.at<int>(cls, j);
+				clsPredicted = j;
+			}
+		}
+		if (cls == clsPredicted) {
+			correct++;
+		}
+	}
+	printf("\nAccuracy: %f\n", (float)correct / nrtest);
+
+	waitKey();
+
+}
+
+int classifyBayes(Mat img, Mat priors, Mat likelihood){
+	// compute the feature matrix for the new image
+	int d = 28 * 28;
+	Mat features(1, d, CV_8UC1, Scalar(0));
+	for(int i = 0; i < d; i++){
+		features.at<uchar>(0, i) = img.at<uchar>(i/28, i%28); // i/28 = linia, i%28 = coloana
+	}
+	// compute the log posterior of each class
+	Mat logPosterior(2, 1, CV_64FC1, Scalar(0));
+	for(int c = 0; c <= 1; c++){
+		logPosterior.at<double>(c, 0) = log(priors.at<double>(c, 0));
+		for(int i = 0; i < d; i++){
+			if(features.at<uchar>(0, i) == 255){
+				logPosterior.at<double>(c, 0) += log(likelihood.at<double>(c, i));
+			}
+			else{
+				logPosterior.at<double>(c, 0) += log(1 - likelihood.at<double>(c, i));
+			}
+		}
+	}
+	// the sample will be classified into class c for which prob[c] is max
+	int c = 0;
+	double maxProb = logPosterior.at<double>(0, 0);
+	for(int i = 1; i <= 1; i++){
+		if(logPosterior.at<double>(i, 0) > maxProb){
+			maxProb = logPosterior.at<double>(i, 0);
+			c = i;
+		}
+	}
+	return c;
+}
+
+void naiveBayesian(){
+	char fname[256];
+	int classes = 2;
+	int c;
+	int index = 0;
+	int num_samples = 200;
+	int num_samples_per_class = 100;
+	int d = 28 * 28;
+	Mat y(num_samples, 1, CV_8UC1, Scalar(0));
+	Mat features(num_samples, d, CV_8UC1, Scalar(0));
+	Mat priors(classes, 1, CV_64FC1, Scalar(0));
+
+	for(c = 0; c <= 1; c++){
+		while(index < num_samples_per_class){
+			sprintf(fname, "D:/facultate/An4sem1/SRF/L9/images/train/%d/%06d.png", c, index);
+			Mat img = imread(fname, IMREAD_GRAYSCALE);
+			if(img.cols == 0){
+				break;
+			}
+			threshold(img, img, 128, 255, THRESH_BINARY);
+			for(int i = 0; i < d; i++){
+				features.at<uchar>(c*num_samples_per_class + index, i) = img.at<uchar>(i/28, i%28); // i/28 = linia, i%28 = coloana
+			}
+			y.at<uchar>(c * num_samples_per_class + index, 0) = c;
+			index++;
+		}
+
+		priors.at<double>(c, 0) = (double)num_samples_per_class / num_samples;
+
+		index = 0;
+	}
+
+	Mat likelihood(classes, d, CV_64FC1, Scalar(1)); // init with 1 to avoid 0
+
+	for(int i = 0; i < num_samples; i++){
+		for(int j = 0; j < d; j++){
+			if(features.at<uchar>(i, j) == 255){
+				likelihood.at<double>(y.at<uchar>(i, 0), j) += 1;
+			}
+		}
+	}
+
+	for(int i = 0; i < classes; i++){
+		for(int j = 0; j < d; j++){
+			likelihood.at<double>(i, j) /= (num_samples_per_class + classes);
+		}
+	}
+
+	// print the likelihood matrix
+	for(int i = 0; i < classes; i++){
+		for(int j = 0; j < d; j++){
+			printf("%f ", likelihood.at<double>(i, j));
+		}
+		printf("\n");
+	}
+
+	// read an img from the test set
+	sprintf(fname, "D:/facultate/An4sem1/SRF/L9/images/test/0/000000.png");
+	Mat img = imread(fname, IMREAD_GRAYSCALE);
+	threshold(img, img, 128, 255, THRESH_BINARY);
+	imshow("test0", img);
+	printf("Class 0: %d\n", classifyBayes(img, priors, likelihood));
+
+	sprintf(fname, "D:/facultate/An4sem1/SRF/L9/images/test/1/000000.png");
+	img = imread(fname, IMREAD_GRAYSCALE);
+	threshold(img, img, 128, 255, THRESH_BINARY);
+	imshow("test1", img);
+	printf("Class 1: %d\n", classifyBayes(img, priors, likelihood));
+	waitKey();
+}
+
 int main()
 {
 	int op;
@@ -3351,7 +4631,22 @@ int main()
 		printf(" 43 - Gaussian noise Filter\n");
 		printf(" 44 - Canny edge detection\n");
 		printf(" 45 - Leaf detection\n");
-
+		printf(" \n");
+		printf(" ############################## AN 4 ##############################\n");
+		printf(" \n");
+		printf(" 46 - Citire date\n");
+		printf(" 47 - Model 1\n");
+		printf(" 48 - Model 2\n");
+		printf(" 49 - RANSAC\n");
+		printf(" 50 - Hough Transform\n");
+		printf(" 51 - Chafer Distance Transform\n");
+		printf(" 52 - Similar cost\n");
+		printf(" 53 - Pattern Matching + Translate Center of Mass\n");
+		printf(" 54 - Statistical Data Analysis\n");
+		printf(" 55 - Principal Components\n");
+		printf(" 56 - Color Histogram\n");
+		printf(" 57 - KNN Classifier\n");
+		printf(" 58 - Naive Bayesian for MNIST dataset\n");
 		printf(" 0 - Exit\n\n");
 		printf("Option: ");
 		scanf("%d", &op);
@@ -3546,6 +4841,51 @@ int main()
 			break;
 		case 45:
 			detectLeaves();
+			break;
+		case 46:
+			citireDate();
+			break;
+		case 47:
+			model1();
+			break;
+		case 48:
+			model2();
+			break;
+		case 49:
+			ransac();
+			break;
+		case 50:
+			int option;
+			std::cout << "Selecteaza dimensiunea ferestrei:\n1. 3x3\n2. 7x7\n3. 11x11\n";
+			std::cin >> option;
+			int threshold;
+			std::cout << "Selecteaza pragul:\n";
+			std::cin >> threshold;
+			houghTransform(option, threshold);
+			break;
+		case 51:
+			chaferDistanceTransform();
+			break;
+		case 52:
+			similarCost();
+			break;
+		case 53:
+			patternMatching();
+			break;
+		case 54:
+			loadImages();
+			break;
+		case 55:
+			principalComponents();
+			break;
+		case 56:
+			colorHistogram();
+			break;
+		case 57:
+			knnClassifier();
+			break;
+		case 58:
+			naiveBayesian();
 			break;
 		}
 	} while (op != 0);
